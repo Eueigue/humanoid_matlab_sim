@@ -30,7 +30,7 @@ Impact_timing = 0.5;             % [s]: Timing of impact
 Impact_step_number = 3;         
 
 % Flags
-flag_HORIZON_CHANGED = 05;       % Set to 1 if the number of MPC horizon is changed
+flag_HORIZON_CHANGED = 1;       % Set to 1 if the number of MPC horizon is changed
 flag_VISUALIZATION = 1;         % Set to 1 for graphic ON
 flag_VISUALIZATION_ROBOT = 1;   % Set to 1 to show robot
 flag_PLOT = 0;                  % Set to 1 to show plots

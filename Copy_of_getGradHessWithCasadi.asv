@@ -267,7 +267,10 @@ cineq7_min_v = jacobian(cineq7_min, v);
 %--- Function generation
 disp('FUNCTION GENERATION START')
 
-output_dir = strcat(folder, '/Function/');
+output_dir = fullfile(folder, '/Function/');
+if ~exist(output_dir, 'dir')
+    mkdir(output_dir);
+end
 
 J_v_func = Function('J_v_func',   {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_v});
 J_vv_func = Function('J_vv_func', {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_vv});

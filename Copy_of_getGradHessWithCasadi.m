@@ -1,4 +1,4 @@
-addpath('casadi-3.6.7-linux64-matlab2018b')
+addpath('casadi-linux-matlabR2014b-v3.5.5')
 import casadi.*
 
 PARA = PARA;
@@ -267,7 +267,12 @@ cineq7_min_v = jacobian(cineq7_min, v);
 %--- Function generation
 disp('FUNCTION GENERATION START')
 
-output_dir = strcat(folder, '/Function/');
+output_dir = fullfile(folder, '/Function/');
+if ~exist(output_dir, 'dir')
+    mkdir(output_dir);
+end
+
+cd(output_dir);
 
 J_v_func = Function('J_v_func',   {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_v});
 J_vv_func = Function('J_vv_func', {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_vv});
@@ -398,4 +403,7 @@ mex cineq7_min_v_func.c
 
 elapsedTime = toc;
 disp(['CONSTRAINTS CODE GENERATION COMPLETED IN ', num2str(elapsedTime), ' SECONDS'])
+
+cd(folder);
+
 % ---
