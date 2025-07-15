@@ -61,7 +61,7 @@ classdef PARA < handle
         Q_COM_z       = 1000000000;
         Q_w           = 10000;
         Q_dCOM        = 10000;
-        Q_contact     = 0;
+        Q_contact     = 10000000;
         
         R_mL = 1;
         R_fL = 1;
