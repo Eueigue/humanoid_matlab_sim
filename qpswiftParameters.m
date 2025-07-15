@@ -1,4 +1,5 @@
 function [P, c, A, b, G, h] = qpswiftParameters(x0, theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, ...
+                                                contact, contact_ref, ...
                                                 rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon)
 
 H = PARA.H;
@@ -15,7 +16,7 @@ dT = PARA.dt_MPC;
 % Gain vectors
 gain_state_horizon = zeros(H*state_length, 1);
 gain_input_horizon = zeros(H*input_length, 1);
-gain_delcontact_horizon  = zeros(H*delcontact_length, 1);
+gain_delcontact_horizon  = zeros(1*delcontact_length, 1);
 
 for i = 1:H
     gain_state_horizon((i-1)*state_length + 1 : (i-1)*state_length + 3,  1) = PARA.Q_theta;
@@ -31,7 +32,7 @@ for i = 1:H
     gain_input_horizon((i-1)*input_length + 7 : (i-1)*input_length + 9,  1) = PARA.R_mR;
     gain_input_horizon((i-1)*input_length + 10: (i-1)*input_length + 12, 1) = PARA.R_fR;
 
-    gain_delcontact_horizon((i-1)*delcontact_length + 1: (i-1)*delcontact_length + 3, 1) = PARA.WC_delcontact;
+    gain_delcontact_horizon(1:3, 1) = PARA.WC_delcontact;
 end
 
 % MPC Reference
@@ -39,9 +40,9 @@ X           = zeros(H*state_length, 1);
 X_ref       = zeros(H*state_length, 1);
 U           = zeros(H*input_length, 1);
 U_ref       = zeros(H*input_length, 1);
-contact     = zeros(H*delcontact_length, 1); 
-delcontact  = zeros(H*delcontact_length, 1); 
-contact_ref = zeros(H*delcontact_length, 1);
+% contact     = zeros(1*delcontact_length, 1); 
+delcontact  = zeros(1*delcontact_length, 1); 
+% contact_ref = zeros(1*delcontact_length, 1);
 
 for i = 1:H
     X_ref((i-1)*state_length + 1 : (i-1)*state_length + 3)  = theta_ref_horizon(:, i);
@@ -129,4 +130,3 @@ h = (-1).*[cineq1_max;
            cineq7_max;
            cineq7_min;];
 
-end

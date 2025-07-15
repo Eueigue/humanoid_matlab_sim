@@ -68,14 +68,14 @@ classdef PARA < handle
         R_mR = 1;
         R_fR = 1;
 
-        WC_delcontact = 0;
+        WC_delcontact = 10000000;
 
         f_z_max = 500;
         f_z_min = 0;
         mu = 0.7;   % Coulomb's Friction Coefficient
 
-        delcontact_x_max = 0.5;
-        delcontact_x_min = -0.5;
+        delcontact_x_max = 0.8;
+        delcontact_x_min = -0.8;
         delcontact_y_max = 0.4;
         delcontact_y_min = -0.4;
 

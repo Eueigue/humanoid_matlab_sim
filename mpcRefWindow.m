@@ -71,20 +71,24 @@ function [theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, c
         if Foot_state_temp == 2
             etaL_ref_horizon(j) = 1;            
             etaR_ref_horizon(j) = 1;
-            fL_ref_horizon(3, :) = 0.5 * PARA.m_all * PARA.g;
-            fR_ref_horizon(3, :) = 0.5 * PARA.m_all * PARA.g;
+            fL_ref_horizon(3, j) = 0.5 * PARA.m_all * PARA.g;
+            fR_ref_horizon(3, j) = 0.5 * PARA.m_all * PARA.g;
+            contact_ref_horizon(:, j) = (L_or_R) .* RF_prev_temp;
         elseif Foot_state_temp ==  1 % LF swing
             etaL_ref_horizon(j) = 0;            
             etaR_ref_horizon(j) = 1;
+            fL_ref_horizon(3, j) = etaL_ref_horizon(j) * fL_ref_horizon(3, j);
+            fR_ref_horizon(3, j) = etaR_ref_horizon(j) * fR_ref_horizon(3, j);
+            contact_ref_horizon(:, j) = RF_prev_temp;
         elseif Foot_state_temp == -1 % RF swing
             etaL_ref_horizon(j) = 1;            
             etaR_ref_horizon(j) = 0;
+            fL_ref_horizon(3, j) = etaL_ref_horizon(j) * fL_ref_horizon(3, j);
+            fR_ref_horizon(3, j) = etaR_ref_horizon(j) * fR_ref_horizon(3, j);
+            contact_ref_horizon(:, j) = LF_prev_temp;
         end
-
-
-        fL_ref_horizon(3, j) = etaL_ref_horizon(j) * fL_ref_horizon(3, j);
-        fR_ref_horizon(3, j) = etaR_ref_horizon(j) * fR_ref_horizon(3, j);
-                
+                  
+        
         [COM_ref_temp_next, dCOM_ref_temp_next, ddCOM_ref_temp_next, p_err_sum_x_ref_temp_next, p_err_sum_y_ref_temp_next] = previewControlMPC(t_step_temp, step_phase_temp, p_ref_total, T_step_ref_total, Gi_MPC, Gx_MPC, Gp_MPC, PARA.A_preview_MPC, PARA.B_preview_MPC, PARA.C_preview_MPC, COM_ref_temp, dCOM_ref_temp, ddCOM_ref_temp, p_err_sum_x_ref_temp, p_err_sum_y_ref_temp);  
         
         theta_ref_horizon(:, j) = zeros(3,1);

@@ -1,4 +1,4 @@
-addpath('casadi-3.6.7-linux64-matlab2018b')
+addpath('casadi-linux-matlabR2014b-v3.5.5')
 import casadi.*
 
 PARA = PARA;
@@ -35,9 +35,9 @@ X           = SX.sym('X'          , state_length * H, 1);
 X_ref       = SX.sym('X_ref'      , state_length * H, 1);
 U           = SX.sym('U'          , input_length * H, 1);
 U_ref       = SX.sym('U_ref'      , input_length * H, 1);
-contact     = SX.sym('contact'    , delcontact_length * H, 1);
-delcontact  = SX.sym('delcontact' , delcontact_length * H, 1);
-contact_ref = SX.sym('contact_ref', delcontact_length * H, 1);
+contact     = SX.sym('contact'    , delcontact_length * 1, 1);
+delcontact  = SX.sym('delcontact' , delcontact_length * 1, 1);
+contact_ref = SX.sym('contact_ref', delcontact_length * 1, 1);
 
 v = [X; U; delcontact];
 
@@ -272,6 +272,8 @@ if ~exist(output_dir, 'dir')
     mkdir(output_dir);
 end
 
+cd(output_dir);
+
 J_v_func = Function('J_v_func',   {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_v});
 J_vv_func = Function('J_vv_func', {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_vv});
  
@@ -401,4 +403,7 @@ mex cineq7_min_v_func.c
 
 elapsedTime = toc;
 disp(['CONSTRAINTS CODE GENERATION COMPLETED IN ', num2str(elapsedTime), ' SECONDS'])
+
+cd(folder);
+
 % ---

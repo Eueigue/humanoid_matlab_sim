@@ -17,9 +17,9 @@ addpath(genpath(folder));
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Step information
 number_of_step = 10;             % Number of steps
-step_length = 0.3;               % Step stride
+step_length = 0.6;               % Step stride
 step_width = PARA.pelvis_width;  % Step width
-step_time = 0.3;                 % Step period
+step_time = 0.6;                 % Step period
 L_or_R = 1;                      % First swing foot: 1: Left foot / -1: Right foot
 
 % Disturbance information
@@ -94,9 +94,11 @@ LF = [0;  0.5*PARA.pelvis_width; 0]; LF_prev = LF;
 RF = [0; -0.5*PARA.pelvis_width; 0]; RF_prev = RF;
 color_LF = [0.9290 0.6940 0.1250];
 color_RF = [0.6 0.6 0.6];
-contact = p_ref_total(:, 3);
-contact_prev_step = contact;
-f_ref = PARA.m_all * PARA.g;
+
+contact = (L_or_R) .* RF;
+contact_ref = (L_or_R) .* RF;
+
+f_z_mg = PARA.m_all * PARA.g;
 
 % Torso
 theta = [0; 0; 0];
@@ -111,12 +113,15 @@ T_step_stored = zeros(1, i_max);
 COM_stored = zeros(3, i_max);
 dCOM_stored = zeros(3, i_max);
 COM_ref_stored = zeros(3, i_max);
+contact_stored = zeros(3, i_max);
+contact_ref_stored = zeros(3, i_max);
 theta_stored = zeros(3, i_max);
 p_stored = zeros(3, i_max); 
 mL_stored = zeros(3, i_max); 
 fL_stored = zeros(3, i_max); 
 mR_stored = zeros(3, i_max); 
 fR_stored = zeros(3, i_max);
+delcontact_stored = zeros(3, i_max);
 etaL_stored = zeros(1, i_max);
 etaR_stored = zeros(1, i_max);
 etak_stored = zeros(1, i_max);
@@ -159,7 +164,7 @@ while 1
     end
 
     % Exit flag
-    if (norm(COM_err) > 0.5 || norm(theta_err) > 0.5)
+    if (norm(COM_err) > 3 || norm(theta_err) > 0.5)
         disp('Walking fail!!');
         i_final = i;
         break;
@@ -204,10 +209,13 @@ while 1
         
     % Calc control input
     x0 = [theta; COM; w; dCOM; contact];
-    [mL, fL, mR, fR] =  nextState(x0, ...
-                                  theta, COM, w, dCOM, contact, ...
-                                  theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, ...
-                                  rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon);
+    
+    [mL, fL, mR, fR, delcontact] =  ...
+        nextState(x0, ...
+                  theta, COM, w, dCOM, contact, ...
+                  contact_ref, ...
+                  theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, ...
+                  rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon);
 
     contact_wrench_result = [mL; fL; mR; fR];
     rL = LF_prev - COM;
@@ -215,13 +223,26 @@ while 1
 
     % Plant response
     t_span = [0 PARA.dt];
-    y0 = [theta; COM; w; dCOM; contact];
+    y0 = [theta; COM; w; dCOM];
     [t_ode, y_ode] = ode45(@(t_ode, y_ode) odefunc(y_ode, contact_wrench_result, Foot_state, PARA.m_all, PARA.I, PARA.g, rL, rR), t_span, y0);  
     theta_next = [y_ode(end, [1:3])]';
     COM_next   = [y_ode(end, [4:6])]';
     w_next     = [y_ode(end, [7:9])]';
     dCOM_next  = [y_ode(end, [10:12])]';
-    contact_next  = [y_ode(end, [13:15])]';
+    
+    if contact_ref_horizon(:, 1) == contact_ref_horizon(:, 2)
+        contact_ref = contact;
+    else
+        contact_ref = contact_ref_horizon(:, 2);
+        p_ref_total(:, step_phase + 1) = contact_ref;
+    end
+
+    if contact ~= contact_ref
+        contact_next(1:2, :) = contact(1:2, :) + etak_ref_horizon(1) * delcontact(1:2, :);
+        p_total(1:2, step_phase + 1) = contact_next;
+    else
+        contact_next(1:2, :) = contact(1:2, :);
+    end
 
     % Foot trajectory
     if Foot_state == 2
@@ -230,14 +251,17 @@ while 1
     elseif Foot_state ==  1 % LF swing
         LF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
         RF = RF_prev;
+        contact = RF_prev;
     elseif Foot_state == -1 % RF swing
         LF = LF_prev;
         RF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
+        contact = LF_prev;
     end
     if (step_phase == number_of_step + 2)
         LF = LF_prev;
         RF = RF_prev;
     end
+    
     
     % Time ticktock
     ticktock = toc;
@@ -250,6 +274,8 @@ while 1
     dCOM_stored(:, i) = dCOM;
     COM_ref_stored(:, i) = COM_ref;
     theta_stored(:,i) = theta;
+    contact_stored(:,i) = contact;
+    contact_ref_stored(:,i) = contact_ref;
     p_stored(:, i) = p_ref_total(:, step_phase);
     mL_stored(:, i) = mL;
     fL_stored(:, i) = fL;
@@ -257,6 +283,7 @@ while 1
     fR_stored(:, i) = fR;
     LF_stored(:, i) = LF;
     RF_stored(:, i) = RF;
+    delcontact_stored(:, i) = delcontact;
     etaL_stored(1, i) = etaL_ref_horizon(1);
     etaR_stored(1, i) = etaR_ref_horizon(1);
     etak_stored(1, i) = etak_ref_horizon(1);
@@ -271,8 +298,8 @@ while 1
     
     theta = theta_next; w = w_next;
     COM = COM_next; dCOM = dCOM_next;
-    contact = contact_next;
-    
+        
+    contact(1:2, :) = contact_next(1:2, :);
     LF_prev = LF;
     RF_prev = RF;
 
@@ -285,7 +312,7 @@ t_stored = t_stored(:, 2:i-1);
 t_step_stored = t_step_stored(:, 2:i-1);
 impact_force_stored = impact_force_stored(:, 2:i-1);
 T_step_stored = T_step_stored(:, 2:i-1);
-COM_stored = COM_stored(:, 2:i-1); COM_ref_stored = COM_ref_stored(:, 2:i-1); dCOM_stored = dCOM_stored(:, 2:i-1);
+COM_stored = COM_stored(:, 2:i-1); COM_ref_stored = COM_ref_stored(:, 2:i-1); dCOM_stored = dCOM_stored(:, 2:i-1); 
 theta_stored = theta_stored(:, 2:i-1); 
 p_stored = p_stored(:, 2:i-1); 
 mL_stored = mL_stored(:, 2:i-1); fL_stored = fL_stored(:, 2:i-1); mR_stored = mR_stored(:, 2:i-1); fR_stored = fR_stored(:, 2:i-1);

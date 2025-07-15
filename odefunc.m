@@ -1,11 +1,10 @@
 function dydt = odefunc_srbd(y_ode, contact_wrench_result, Foot_state, m, I, g, rL, rR)
-dydt = zeros(15, 1);
+dydt = zeros(12, 1);
 
 theta    = y_ode([1:3]);
 COM      = y_ode([4:6]);
 w        = y_ode([7:9]);
 dCOM     = y_ode([10:12]);
-contact  = y_ode([13:15]);
 
 mL = contact_wrench_result([1:3]);
 fL = contact_wrench_result([4:6]);
@@ -43,5 +42,4 @@ dydt([1:3])   = T\w;
 dydt([4:6])   = dCOM;
 dydt([7:9])   = I\(etaL * (mL + skew(rL) * fL) + etaR * (mR + skew(rR) * fR));
 dydt([10:12]) = (etaL * fL + etaR * fR) / m + grav_;
-dydt([13:15]) = 0;
 end
