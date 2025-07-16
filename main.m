@@ -97,6 +97,8 @@ color_RF = [0.6 0.6 0.6];
 
 contact = (L_or_R) .* RF;
 contact_ref = (L_or_R) .* RF;
+contact_temp = contact;
+tol = 1e-12;
 
 f_z_mg = PARA.m_all * PARA.g;
 
@@ -129,6 +131,7 @@ LF_stored = zeros(3, i_max);
 RF_stored = zeros(3, i_max);
 ticktock_stored = zeros(1, i_max);
 
+
 %%
 %--- Main Loop
 i_final = 0;
@@ -156,6 +159,35 @@ while 1
         if step_phase <= number_of_step + 3
             T_step_ref = T_step_ref_total(1, step_phase);
             T_step = T_step_total(:, step_phase);
+        end
+        
+        % Update current step location (contact & contact_ref)
+        if Foot_state == 1
+            contact = RF_prev;
+        elseif Foot_state == -1
+            contact = LF_prev;
+        elseif Foot_state == 2
+            if L_or_R == 1 && mod(number_of_step, 2) == 0
+                contact = RF_prev;
+            elseif L_or_R == 1 && mod(number_of_step, 2) == 1
+                contact = LF_Prev;
+            elseif L_or_R == -1 && mod(number_of_step, 2) == 0
+                contact = LF_Prev;
+            elseif L_or_R == -1 && mod(number_of_step, 2) == 1
+                contact = RF_Prev;
+            else
+                disp('Last Contact Failed!!');
+                break;
+            end
+        else
+            disp('Contact Update Failed!!');
+            break;
+        end
+
+        if step_phase == 2
+            contact_ref = contact;
+        else
+            contact_ref = p_ref_total(:, step_phase);
         end
 
         % Reset t_step & flag
@@ -230,20 +262,38 @@ while 1
     w_next     = [y_ode(end, [7:9])]';
     dCOM_next  = [y_ode(end, [10:12])]';
     
-    if contact_ref_horizon(:, 1) == contact_ref_horizon(:, 2)
-        contact_ref = contact;
-    else
-        contact_ref = contact_ref_horizon(:, 2);
-        p_ref_total(:, step_phase + 1) = contact_ref;
+    % if contact_ref_horizon(:, 1) == contact_ref_horizon(:, 2)
+    %     contact_ref = contact;
+    % else
+    %     contact_ref = contact_ref_horizon(:, 2);
+    %     p_ref_total(:, step_phase + 1) = contact_ref;
+    % end
+    % 
+    % if contact ~= contact_ref
+    %     contact_next(1:2, :) = contact(1:2, :) + etak_ref_horizon(1) * delcontact(1:2, :);
+    %     p_total(1:2, step_phase + 1) = contact_next;
+    % else
+    %     contact_next(1:2, :) = contact(1:2, :);
+    % end
+
+    contact_temp = contact_temp + delcontact / PARA.T_scale;
+
+    % Update p_total (지나온 궤적 기록 + contact + delcontact 반영한 미래 기록)
+    % [contact_temp, p_total] = updateContactPoint(t_step, step_phase, p_total, T_step_total, contact_temp);
+
+    if abs(mod(t_step, PARA.dt_MPC)) < tol
+        if step_phase ~= 1
+            p_total(:, step_phase + 1) = contact_temp;
+        end
     end
 
-    if contact ~= contact_ref
-        contact_next(1:2, :) = contact(1:2, :) + etak_ref_horizon(1) * delcontact(1:2, :);
-        p_total(1:2, step_phase + 1) = contact_next;
-    else
-        contact_next(1:2, :) = contact(1:2, :);
-    end
+    % "20번 더하고 나면 contact = contact_temp"
+    
+    % "그리고 나서 p_total(:, step_phase + 1)에 반영하여, footTRajectory가 변했으면 좋겠음."
+    % "footTrajectory의 P0는 swing 전 Contact 위치"
 
+    % "footTrajectory의 P3는 swing 후 Contact 위치 (contact + delcontact)"
+    
     % Foot trajectory
     if Foot_state == 2
         LF = LF_prev;
@@ -252,10 +302,16 @@ while 1
         LF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
         RF = RF_prev;
         contact = RF_prev;
+        if step_phase ~= 1
+            p_total(:, step_phase - 1) = contact;
+        end
     elseif Foot_state == -1 % RF swing
         LF = LF_prev;
         RF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
         contact = LF_prev;
+        if step_phase ~= 1
+            p_total(:, step_phase - 1) = contact;
+        end
     end
     if (step_phase == number_of_step + 2)
         LF = LF_prev;
@@ -299,13 +355,60 @@ while 1
     theta = theta_next; w = w_next;
     COM = COM_next; dCOM = dCOM_next;
         
-    contact(1:2, :) = contact_next(1:2, :);
+    % contact(1:2, :) = contact_next(1:2, :);
     LF_prev = LF;
     RF_prev = RF;
 
     i = i + 1;
 end
 %---
+
+% Debug
+temp_p_stored_1 = p_stored(:, 1:600);
+temp_p_stored_2 = p_stored(:, 601:1200);
+temp_p_stored_3 = p_stored(:, 1201:1800);
+temp_p_stored_4 = p_stored(:, 1801:2400);
+
+temp_etaL_stored_1 = etaL_stored(1, 1:600);
+temp_etaL_stored_2 = etaL_stored(1, 601:1200);
+temp_etaL_stored_3 = etaL_stored(1, 1201:1800);
+temp_etaL_stored_4 = etaL_stored(1, 1201:2400);
+
+temp_etaR_stored_1 = etaR_stored(1, 1:600);
+temp_etaR_stored_2 = etaR_stored(1, 601:1200);
+temp_etaR_stored_3 = etaR_stored(1, 1201:1800);
+temp_etaR_stored_4 = etaR_stored(1, 1201:2400);
+
+temp_etak_stored_1 = etak_stored(1, 1:600);
+temp_etak_stored_2 = etak_stored(1, 601:1200);
+temp_etak_stored_3 = etak_stored(1, 1201:1800);
+temp_etak_stored_4 = etak_stored(1, 1201:2400);
+
+temp_LF_stored_1 = LF_stored(:, 1:600);
+temp_LF_stored_2 = LF_stored(:, 601:1200);
+temp_LF_stored_3 = LF_stored(:, 1201:1800);
+temp_LF_stored_4 = LF_stored(:, 1201:2400);
+
+temp_RF_stored_1 = RF_stored(:, 1:600);
+temp_RF_stored_2 = RF_stored(:, 601:1200);
+temp_RF_stored_3 = RF_stored(:, 1201:1800);
+temp_RF_stored_4 = RF_stored(:, 1201:2400);
+
+temp_contact_stored_1 = contact_stored(:, 1:600);
+temp_contact_stored_2 = contact_stored(:, 601:1200);
+temp_contact_stored_3 = contact_stored(:, 1201:1800);
+temp_contact_stored_4 = contact_stored(:, 1201:2400);
+
+temp_contact_ref_stored_1 = contact_ref_stored(:, 1:600);
+temp_contact_ref_stored_2 = contact_ref_stored(:, 601:1200);
+temp_contact_ref_stored_3 = contact_ref_stored(:, 1201:1800);
+temp_contact_ref_stored_4 = contact_ref_stored(:, 1201:2400);
+
+temp_delcontact_stored_1 = delcontact_stored(:, 1:600);
+temp_delcontact_stored_2 = delcontact_stored(:, 601:1200);
+temp_delcontact_stored_3 = delcontact_stored(:, 1201:1800);
+temp_delcontact_stored_4 = delcontact_stored(:, 1201:2400);
+
 
 %-- Plot
 t_stored = t_stored(:, 2:i-1);
