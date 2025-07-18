@@ -62,10 +62,10 @@ delcontactR = sym("delcontactR", [3, 1]);
 syms M
      ag = [0; 0; -PARA.g]
   I_inv = sym("I_inv", [3, 3])
-     % rL = contact + delcontactL - COM
-     % rR = contact + delcontactR - COM 
-     rL = contact - COM
-     rR = contact - COM
+     rL = contact + delcontactL - COM
+     rR = contact + delcontactR - COM 
+     % rL = contact - COM
+     % rR = contact - COM
 
      Rf_inv = sym("Rf_inv", [3, 3])
 
@@ -84,9 +84,8 @@ delcontact = [delcontactL; delcontactR]
 
 % coefficient
 A = jacobian(dx, x)
-B = jacobian(dx, u);
-C = jacobian(dx, delcontact);
-
+B = jacobian(dx, u)
+C = jacobian(dx, delcontact)
 
 
 
@@ -115,5 +114,5 @@ C = jacobian(dx, delcontact);
 % test_A = I_inv * skew(fL+fR)
 
 % A_last_three = A(:, end-2:end)
-% C(:, 1:3)
-% test_C = - I_inv * (skew(fL)+skew(fR))
+C(:, 1:3)
+test_C = - I_inv * (skew(fL)+skew(fR))

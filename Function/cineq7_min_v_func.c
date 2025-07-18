@@ -180,43 +180,13 @@ mxArray* casadi_to_mex(const casadi_int* sp, const casadi_real* x) {
 
 static const casadi_int casadi_s0[7] = {3, 1, 0, 3, 0, 1, 2};
 static const casadi_int casadi_s1[5] = {1, 1, 0, 1, 0};
-static const casadi_int casadi_s2[441] = {30, 408, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 30, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29};
+static const casadi_int casadi_s2[412] = {1, 408, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0};
 
-/* cineq7_min_v_func:(i0[3],i1)->(o0[30x408,30nz]) */
+/* cineq7_min_v_func:(i0[3],i1)->(o0[1x408,1nz]) */
 static int casadi_f0(const casadi_real** arg, casadi_real** res, casadi_int* iw, casadi_real* w, int mem) {
-  casadi_real a0, a1;
-  a0=1.;
+  casadi_real a0;
+  a0=-1.;
   if (res[0]!=0) res[0][0]=a0;
-  a1=-1.;
-  if (res[0]!=0) res[0][1]=a1;
-  if (res[0]!=0) res[0][2]=a0;
-  if (res[0]!=0) res[0][3]=a1;
-  if (res[0]!=0) res[0][4]=a0;
-  if (res[0]!=0) res[0][5]=a1;
-  if (res[0]!=0) res[0][6]=a0;
-  if (res[0]!=0) res[0][7]=a1;
-  if (res[0]!=0) res[0][8]=a0;
-  if (res[0]!=0) res[0][9]=a1;
-  if (res[0]!=0) res[0][10]=a0;
-  if (res[0]!=0) res[0][11]=a1;
-  if (res[0]!=0) res[0][12]=a0;
-  if (res[0]!=0) res[0][13]=a1;
-  if (res[0]!=0) res[0][14]=a0;
-  if (res[0]!=0) res[0][15]=a1;
-  if (res[0]!=0) res[0][16]=a0;
-  if (res[0]!=0) res[0][17]=a1;
-  if (res[0]!=0) res[0][18]=a0;
-  if (res[0]!=0) res[0][19]=a1;
-  if (res[0]!=0) res[0][20]=a0;
-  if (res[0]!=0) res[0][21]=a1;
-  if (res[0]!=0) res[0][22]=a0;
-  if (res[0]!=0) res[0][23]=a1;
-  if (res[0]!=0) res[0][24]=a0;
-  if (res[0]!=0) res[0][25]=a1;
-  if (res[0]!=0) res[0][26]=a0;
-  if (res[0]!=0) res[0][27]=a1;
-  if (res[0]!=0) res[0][28]=a0;
-  if (res[0]!=0) res[0][29]=a1;
   return 0;
 }
 
@@ -299,17 +269,17 @@ CASADI_SYMBOL_EXPORT int cineq7_min_v_func_work(casadi_int *sz_arg, casadi_int* 
 #ifdef MATLAB_MEX_FILE
 void mex_cineq7_min_v_func(int resc, mxArray *resv[], int argc, const mxArray *argv[]) {
   casadi_int i;
-  casadi_real w[37];
+  casadi_real w[8];
   casadi_int *iw = 0;
   const casadi_real* arg[2] = {0};
   casadi_real* res[1] = {0};
   if (argc>2) mexErrMsgIdAndTxt("Casadi:RuntimeError","Evaluation of \"cineq7_min_v_func\" failed. Too many input arguments (%d, max 2)", argc);
   if (resc>1) mexErrMsgIdAndTxt("Casadi:RuntimeError","Evaluation of \"cineq7_min_v_func\" failed. Too many output arguments (%d, max 1)", resc);
-  if (--argc>=0) arg[0] = casadi_from_mex(argv[0], w, casadi_s0, w+34);
-  if (--argc>=0) arg[1] = casadi_from_mex(argv[1], w+3, casadi_s1, w+34);
+  if (--argc>=0) arg[0] = casadi_from_mex(argv[0], w, casadi_s0, w+5);
+  if (--argc>=0) arg[1] = casadi_from_mex(argv[1], w+3, casadi_s1, w+5);
   --resc;
   res[0] = w+4;
-  i = cineq7_min_v_func(arg, res, iw, w+34, 0);
+  i = cineq7_min_v_func(arg, res, iw, w+5, 0);
   if (i) mexErrMsgIdAndTxt("Casadi:RuntimeError","Evaluation of \"cineq7_min_v_func\" failed.");
   if (res[0]) resv[0] = casadi_to_mex(casadi_s2, res[0]);
 }
@@ -321,7 +291,7 @@ casadi_int main_cineq7_min_v_func(casadi_int argc, char* argv[]) {
   const casadi_real* r;
   casadi_int flag;
   casadi_int *iw = 0;
-  casadi_real w[36];
+  casadi_real w[6];
   const casadi_real* arg[2];
   casadi_real* res[1];
   arg[0] = w+0;
@@ -329,10 +299,10 @@ casadi_int main_cineq7_min_v_func(casadi_int argc, char* argv[]) {
   res[0] = w+4;
   a = w;
   for (j=0; j<4; ++j) if (scanf("%lg", a++)<=0) return 2;
-  flag = cineq7_min_v_func(arg, res, iw, w+34, 0);
+  flag = cineq7_min_v_func(arg, res, iw, w+5, 0);
   if (flag) return flag;
   r = w+4;
-  for (j=0; j<30; ++j) CASADI_PRINTF("%g ", *r++);
+  for (j=0; j<1; ++j) CASADI_PRINTF("%g ", *r++);
   CASADI_PRINTF("\n");
   return 0;
 }

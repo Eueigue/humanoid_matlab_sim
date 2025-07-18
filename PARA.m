@@ -59,9 +59,9 @@ classdef PARA < handle
         Q_COM_x       = 1000000000;
         Q_COM_y       = 1000000000;
         Q_COM_z       = 1000000000;
-        Q_w           = 10000;
+        Q_w           = 10000000; % KWLEE prev:10000
         Q_dCOM        = 10000;
-        Q_contact     = 10000000;
+        Q_contact     = 0;
         
         R_mL = 1;
         R_fL = 1;
@@ -75,9 +75,9 @@ classdef PARA < handle
         mu = 0.7;   % Coulomb's Friction Coefficient
 
         delcontact_x_max = 0.8;
-        delcontact_x_min = -0.8;
-        delcontact_y_max = 0.4;
-        delcontact_y_min = -0.4;
+        delcontact_x_min = 0;
+        delcontact_y_max = 0.3;
+        delcontact_y_min = -0.3;
 
         
         % Kinematics - from TOCABI`s data

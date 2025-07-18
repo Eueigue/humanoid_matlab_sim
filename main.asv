@@ -23,11 +23,11 @@ step_time = 0.6;                 % Step period
 L_or_R = 1;                      % First swing foot: 1: Left foot / -1: Right foot
 
 % Disturbance information
-Impact_force_x = 0;              % [N]: x-dir impact force
-Impact_force_y = 400;            % [N]: y-dir impact force
+Impact_force_x = 0;            % [N]: x-dir impact force
+Impact_force_y = 0;            % [N]: y-dir impact force
 Impact_duration = 0.05;          % [s]: Impact duration
-Impact_timing = 0.5;             % [s]: Timing of impact
-Impact_step_number = 3;         
+Impact_timing = 0.4;             % [s]: Timing of impact
+Impact_step_number = 10;         
 
 % Flags
 flag_HORIZON_CHANGED = 1;       % Set to 1 if the number of MPC horizon is changed
@@ -97,8 +97,6 @@ color_RF = [0.6 0.6 0.6];
 
 contact = (L_or_R) .* RF;
 contact_ref = (L_or_R) .* RF;
-contact_temp = contact;
-tol = 1e-12;
 
 f_z_mg = PARA.m_all * PARA.g;
 
@@ -114,11 +112,17 @@ impact_force_stored = zeros(2, i_max);
 T_step_stored = zeros(1, i_max);
 COM_stored = zeros(3, i_max);
 dCOM_stored = zeros(3, i_max);
+COM_next_stored = zeros(3, i_max);
 COM_ref_stored = zeros(3, i_max);
 contact_stored = zeros(3, i_max);
 contact_ref_stored = zeros(3, i_max);
+contact_temp_stored = zeros(3, i_max);
 theta_stored = zeros(3, i_max);
-p_stored = zeros(3, i_max); 
+w_stored = zeros(3, i_max);
+w_ref_stored = zeros(3, i_max);
+p_stored = zeros(3, i_max);
+p_next_foot_step_stored = zeros(3, i_max);
+p_ref_stored = zeros(3, i_max); 
 mL_stored = zeros(3, i_max); 
 fL_stored = zeros(3, i_max); 
 mR_stored = zeros(3, i_max); 
@@ -131,6 +135,8 @@ LF_stored = zeros(3, i_max);
 RF_stored = zeros(3, i_max);
 ticktock_stored = zeros(1, i_max);
 
+step1 = 1:600; step2 = 601:1200; step3 = 1201:1800; step4 = 1801:2400; step5 = 2401:3000; 
+step6 = 3001:3600; step7 = 3601:4200; step8 = 4201:4800; step9 = 4801:5400; step10 = 5401:6000;
 
 %%
 %--- Main Loop
@@ -170,11 +176,11 @@ while 1
             if L_or_R == 1 && mod(number_of_step, 2) == 0
                 contact = RF_prev;
             elseif L_or_R == 1 && mod(number_of_step, 2) == 1
-                contact = LF_Prev;
+                contact = LF_prev;
             elseif L_or_R == -1 && mod(number_of_step, 2) == 0
-                contact = LF_Prev;
+                contact = LF_prev;
             elseif L_or_R == -1 && mod(number_of_step, 2) == 1
-                contact = RF_Prev;
+                contact = RF_prev;
             else
                 disp('Last Contact Failed!!');
                 break;
@@ -184,12 +190,8 @@ while 1
             break;
         end
 
-        if step_phase == 2
-            contact_ref = p_ref_total(:, step_phase);
-        else
-            contact_ref = p_ref_total(:, step_phase);
-        end
-
+        contact_ref = p_ref_total(:, step_phase + 1);
+        
         % Reset t_step & flag
         t_step = 0;
         flag_STEP_CHANGE = 0; 
@@ -252,6 +254,16 @@ while 1
     contact_wrench_result = [mL; fL; mR; fR];
     rL = LF_prev - COM;
     rR = RF_prev - COM;
+    
+    if step_phase ~= 1
+        p_total(:, step_phase + 1) = contact + delcontact;
+    end
+
+    if etak_ref_horizon(1) == 1 && Foot_state == 1
+        rR = p_total(:, step_phase + 1) - COM;
+    elseif etak_ref_horizon(1) == 1 && Foot_state == -1
+        rL = p_total(:, step_phase + 1) - COM;
+    end
 
     % Plant response
     t_span = [0 PARA.dt];
@@ -261,58 +273,21 @@ while 1
     COM_next   = [y_ode(end, [4:6])]';
     w_next     = [y_ode(end, [7:9])]';
     dCOM_next  = [y_ode(end, [10:12])]';
-    
-    % if contact_ref_horizon(:, 1) == contact_ref_horizon(:, 2)
-    %     contact_ref = contact;
-    % else
-    %     contact_ref = contact_ref_horizon(:, 2);
-    %     p_ref_total(:, step_phase + 1) = contact_ref;
-    % end
-    % 
-    % if contact ~= contact_ref
-    %     contact_next(1:2, :) = contact(1:2, :) + etak_ref_horizon(1) * delcontact(1:2, :);
-    %     p_total(1:2, step_phase + 1) = contact_next;
-    % else
-    %     contact_next(1:2, :) = contact(1:2, :);
-    % end
 
-    contact_temp = contact_temp + delcontact / PARA.T_scale;
-
-    % Update p_total (지나온 궤적 기록 + contact + delcontact 반영한 미래 기록)
-    % [contact_temp, p_total] = updateContactPoint(t_step, step_phase, p_total, T_step_total, contact_temp);
-
-    if abs(mod(t_step, PARA.dt_MPC)) < tol
-        if step_phase ~= 1
-            p_total(:, step_phase + 1) = contact_temp;
-        end
-    end
-
-    % "20번 더하고 나면 contact = contact_temp"
-    
-    % "그리고 나서 p_total(:, step_phase + 1)에 반영하여, footTRajectory가 변했으면 좋겠음."
-    % "footTrajectory의 P0는 swing 전 Contact 위치"
-
-    % "footTrajectory의 P3는 swing 후 Contact 위치 (contact + delcontact)"
-    
     % Foot trajectory
     if Foot_state == 2
         LF = LF_prev;
         RF = RF_prev;
     elseif Foot_state ==  1 % LF swing
-        LF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
+        LF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, L_or_R, T_step, p_total, LF_prev, RF_prev);
         RF = RF_prev;
         contact = RF_prev;
-        if step_phase ~= 1
-            p_total(:, step_phase - 1) = contact;
-        end
     elseif Foot_state == -1 % RF swing
         LF = LF_prev;
-        RF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
+        RF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, L_or_R, T_step, p_total, LF_prev, RF_prev);
         contact = LF_prev;
-        if step_phase ~= 1
-            p_total(:, step_phase - 1) = contact;
-        end
     end
+
     if (step_phase == number_of_step + 2)
         LF = LF_prev;
         RF = RF_prev;
@@ -327,12 +302,17 @@ while 1
     t_step_stored(:, i) = t_step;
     T_step_stored(:, i) = T_step;
     COM_stored(:, i) = COM;
+    COM_next_stored(:, i) = COM_next;
     dCOM_stored(:, i) = dCOM;
     COM_ref_stored(:, i) = COM_ref;
     theta_stored(:,i) = theta;
+    w_stored(:, i) = w;
+    w_ref_stored(:, i) = w_ref_horizon(:, 1);
     contact_stored(:,i) = contact;
     contact_ref_stored(:,i) = contact_ref;
-    p_stored(:, i) = p_ref_total(:, step_phase);
+    p_stored(:, i) = p_total(:, step_phase);
+    p_next_foot_step_stored(:, i) = p_total(:, step_phase + 1);
+    p_ref_stored(:, i) = p_ref_total(:, step_phase);
     mL_stored(:, i) = mL;
     fL_stored(:, i) = fL;
     mR_stored(:, i) = mR;
@@ -364,64 +344,64 @@ end
 %---
 
 % Debug
-temp_p_stored_1 = p_stored(:, 1:600);
-temp_p_stored_2 = p_stored(:, 601:1200);
-temp_p_stored_3 = p_stored(:, 1201:1800);
-temp_p_stored_4 = p_stored(:, 1801:2400);
+temp_p_stored_1 = p_ref_stored(:, 1:600);
+temp_p_stored_2 = p_ref_stored(:, 601:1200);
+temp_p_stored_3 = p_ref_stored(:, 1201:1800);
+temp_p_stored_4 = p_ref_stored(:, 1801:2400);
 
 temp_etaL_stored_1 = etaL_stored(1, 1:600);
 temp_etaL_stored_2 = etaL_stored(1, 601:1200);
 temp_etaL_stored_3 = etaL_stored(1, 1201:1800);
-temp_etaL_stored_4 = etaL_stored(1, 1201:2400);
+temp_etaL_stored_4 = etaL_stored(1, 1801:2400);
 
 temp_etaR_stored_1 = etaR_stored(1, 1:600);
 temp_etaR_stored_2 = etaR_stored(1, 601:1200);
 temp_etaR_stored_3 = etaR_stored(1, 1201:1800);
-temp_etaR_stored_4 = etaR_stored(1, 1201:2400);
+temp_etaR_stored_4 = etaR_stored(1, 1801:2400);
 
 temp_etak_stored_1 = etak_stored(1, 1:600);
 temp_etak_stored_2 = etak_stored(1, 601:1200);
 temp_etak_stored_3 = etak_stored(1, 1201:1800);
-temp_etak_stored_4 = etak_stored(1, 1201:2400);
+temp_etak_stored_4 = etak_stored(1, 1801:2400);
 
 temp_LF_stored_1 = LF_stored(:, 1:600);
 temp_LF_stored_2 = LF_stored(:, 601:1200);
 temp_LF_stored_3 = LF_stored(:, 1201:1800);
-temp_LF_stored_4 = LF_stored(:, 1201:2400);
+temp_LF_stored_4 = LF_stored(:, 1801:2400);
 
 temp_RF_stored_1 = RF_stored(:, 1:600);
 temp_RF_stored_2 = RF_stored(:, 601:1200);
 temp_RF_stored_3 = RF_stored(:, 1201:1800);
-temp_RF_stored_4 = RF_stored(:, 1201:2400);
+temp_RF_stored_4 = RF_stored(:, 1801:2400);
 
 temp_contact_stored_1 = contact_stored(:, 1:600);
 temp_contact_stored_2 = contact_stored(:, 601:1200);
 temp_contact_stored_3 = contact_stored(:, 1201:1800);
-temp_contact_stored_4 = contact_stored(:, 1201:2400);
+temp_contact_stored_4 = contact_stored(:, 1801:2400);
 
 temp_contact_ref_stored_1 = contact_ref_stored(:, 1:600);
 temp_contact_ref_stored_2 = contact_ref_stored(:, 601:1200);
 temp_contact_ref_stored_3 = contact_ref_stored(:, 1201:1800);
-temp_contact_ref_stored_4 = contact_ref_stored(:, 1201:2400);
+temp_contact_ref_stored_4 = contact_ref_stored(:, 1801:2400);
 
 temp_delcontact_stored_1 = delcontact_stored(:, 1:600);
 temp_delcontact_stored_2 = delcontact_stored(:, 601:1200);
 temp_delcontact_stored_3 = delcontact_stored(:, 1201:1800);
-temp_delcontact_stored_4 = delcontact_stored(:, 1201:2400);
+temp_delcontact_stored_4 = delcontact_stored(:, 1801:2400);
 
-
-%-- Plot
-t_stored = t_stored(:, 2:i-1);
-t_step_stored = t_step_stored(:, 2:i-1);
-impact_force_stored = impact_force_stored(:, 2:i-1);
-T_step_stored = T_step_stored(:, 2:i-1);
-COM_stored = COM_stored(:, 2:i-1); COM_ref_stored = COM_ref_stored(:, 2:i-1); dCOM_stored = dCOM_stored(:, 2:i-1); 
-theta_stored = theta_stored(:, 2:i-1); 
-p_stored = p_stored(:, 2:i-1); 
-mL_stored = mL_stored(:, 2:i-1); fL_stored = fL_stored(:, 2:i-1); mR_stored = mR_stored(:, 2:i-1); fR_stored = fR_stored(:, 2:i-1);
-etaR_stored = etaR_stored(:, 2:i-1); etaL_stored = etaL_stored(:, 2:i-1);
-LF_stored = LF_stored(:, 2:i-1); RF_stored = RF_stored(:, 2:i-1);
-ticktock_stored = ticktock_stored(:, 2:i-1);
+%%
+% %-- Plot
+% t_stored = t_stored(:, 2:i-1);
+% t_step_stored = t_step_stored(:, 2:i-1);
+% impact_force_stored = impact_force_stored(:, 2:i-1);
+% T_step_stored = T_step_stored(:, 2:i-1);
+% COM_stored = COM_stored(:, 2:i-1); COM_ref_stored = COM_ref_stored(:, 2:i-1); dCOM_stored = dCOM_stored(:, 2:i-1); 
+% theta_stored = theta_stored(:, 2:i-1); 
+% p_ref_stored = p_ref_stored(:, 2:i-1); 
+% mL_stored = mL_stored(:, 2:i-1); fL_stored = fL_stored(:, 2:i-1); mR_stored = mR_stored(:, 2:i-1); fR_stored = fR_stored(:, 2:i-1);
+% etaR_stored = etaR_stored(:, 2:i-1); etaL_stored = etaL_stored(:, 2:i-1);
+% LF_stored = LF_stored(:, 2:i-1); RF_stored = RF_stored(:, 2:i-1);
+% ticktock_stored = ticktock_stored(:, 2:i-1);
 
 
 %% --- Animation
@@ -846,6 +826,197 @@ function printfig(~,evnt)
         flag_PAUSE = 1;        
     end
 end
+
+
+%%
+%-- 점검
+figure('Units','normalized', ...
+       'OuterPosition',[ (1-0.9)/2, (1-0.9*0.8)/2, 0.9, 0.9*0.8 ], ...
+       'Name','Analysis');
+
+%––– Fig 1: delcontact_stored(1,:) + reference
+subplot(3,4,1);
+plot(1:i, delcontact_stored(1,1:i), 'b-', 'LineWidth', 1.5); hold on;
+plot(1:i, 0.6 * ones(1,i),   'r--', 'LineWidth', 1);        % 한보폭
+plot(1:i, 0.3 * ones(1,i),   'r--', 'LineWidth', 1);        % 반보폭
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;
+xlim([1 i]);
+xlabel('Step index');
+ylabel('delcontact_x');
+legend('delcontact_x','Reference step length', 'Reference half');
+title('deltac_x');
+
+
+%––– Fig 2: delcontact_stored(2,:) + reference
+subplot(3,4,5);
+plot(1:i, delcontact_stored(2,1:i), 'b-', 'LineWidth', 1.5); hold on;
+plot(1:i, 0.22 * ones(1,i),      'r--', 'LineWidth', 1);
+plot(1:i, -0.22 * ones(1,i),      'r--', 'LineWidth', 1);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;
+xlim([1 i]);
+xlabel('Step index');
+ylabel('delcontact_y');
+legend('delcontact_y','Reference left', 'Reference right');
+title('deltac_y');
+
+%––– Fig 1: wx
+subplot(3,4,2);
+plot(1:i, w_stored(1,1:i),       'b-',  'LineWidth', 1.5); hold on;
+plot(1:i, w_ref_stored(1,1:i),   'r--', 'LineWidth', 1);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;
+xlim([1 i]);
+xlabel('Step index');
+ylabel('w_x');
+legend('w_x','w\_Ref_x');
+title('w_x VS w\_Ref_x');
+
+
+%––– Fig 2: wy
+subplot(3,4,6);
+plot(1:i, w_stored(2,1:i),       'b-',  'LineWidth', 1.5); hold on;
+plot(1:i, w_ref_stored(2,1:i),   'r--', 'LineWidth', 1);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;
+xlim([1 i]);
+xlabel('Step index');
+ylabel('w_y');
+legend('w_y','w\_Ref_y');
+title('w_y VS w\_Ref_y');
+
+%––– Fig 3: wz
+subplot(3,4,10);
+plot(1:i, w_stored(3,1:i),       'b-',  'LineWidth', 1.5); hold on;
+plot(1:i, w_ref_stored(3,1:i),   'r--', 'LineWidth', 1);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;
+xlim([1 i]);
+xlabel('Step index');
+ylabel('w_z');
+legend('w_z','w\_Ref_z');
+title('w_z VS w\_Ref_z');
+
+%––– subplot(2,2,2): footstep location x
+subplot(3,4,3);
+h1 = plot(1:i, p_next_foot_step_stored(1,1:i), 'b:',  'LineWidth',1.5);  hold on;
+h2 = plot(1:i, p_ref_stored(1,1:i),             'k-.', 'LineWidth',1.5); % dash-dot
+h3 = plot(1:i, p_stored(1,1:i),                 'r-',  'LineWidth',1.5); % dotted
+h4 = plot(1:i, COM_stored(1,1:i),                 'g-',  'LineWidth',1.5);
+h5 = plot(1:i, COM_ref_stored(1,1:i),             'm-',  'LineWidth',1.5);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;
+ax.YTick = 0:0.3:2.4;
+xlim([1 i]);
+ylim([0 2.4]);
+xlabel('Step index');
+ylabel('x');
+legend([h1,h2,h3,h4,h5],{'p\_next_x','p\_ref_x','p_x', 'COM\_x', 'COM\_Ref_x'},'Location','northwest');
+title('footstep location x');
+
+%––– subplot(2,2,4): footstep location y
+subplot(3,4,7);
+h1 = plot(1:i, p_next_foot_step_stored(2,1:i), 'b:',  'LineWidth',1.5);  hold on;
+h2 = plot(1:i, p_ref_stored(2,1:i),             'k-.', 'LineWidth',1.5);
+h3 = plot(1:i, p_stored(2,1:i),                 'r-',  'LineWidth',1.5);
+h4 = plot(1:i, COM_stored(2,1:i),                 'g-',  'LineWidth',1.5);
+h5 = plot(1:i, COM_ref_stored(2,1:i),             'm-',  'LineWidth',1.5);
+grid on;
+ax = gca;         
+ax.YTick = -0.33:0.11:0.33;
+xlim([1 i]);
+ylim([-0.3 0.3]);
+xlabel('Step index');
+ylabel('y');
+legend([h1,h2,h3,h4,h5],{'p\_next_y','p\_ref_y','p_y', 'COM\_y', 'COM\_Ref_y'},'Location','northwest');
+title('footstep location y');
+
+%-- LF/RF x-t
+subplot(3,4,4);
+h1 = plot(1:i, LF_stored(1,1:i), 'b-',  'LineWidth', 1.5); hold on;
+h2 = plot(1:i, RF_stored(1,1:i), 'r-',  'LineWidth', 1.5);
+h3 = plot(1:i, p_ref_stored(1,1:i),  'k--', 'LineWidth', 1.5);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;        
+ax.YTick = 0:0.3:2.4;
+xlim([1 i]);
+ylim([0 2.4]);
+xlabel('Step index');
+ylabel('LF/RF x-t');
+legend([h1,h2,h3],{'LF_x','RF_x','C_ref'},'Location','northwest');
+title('LF/RF x-t');
+
+%-- LF/RF y-t
+subplot(3,4,8);
+h1 = plot(1:i, LF_stored(2,1:i), 'b-',  'LineWidth', 1.5); hold on;
+h2 = plot(1:i, RF_stored(2,1:i), 'r-',  'LineWidth', 1.5);
+h3 = plot(1:i, p_ref_stored(2,1:i),  'k--', 'LineWidth', 1.5);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;   
+ax.YTick = -0.33:0.11:0.33;
+xlim([1 i]);
+ylim([-0.3 0.3]);
+xlabel('Step index');
+ylabel('LF/RF y-t');
+legend([h1,h2,h3],{'LF_y','RF_y','C_ref'},'Location','northwest');
+title('LF/RF y-t');
+
+%%
+figure('Units','normalized', ...
+       'OuterPosition',[ (1-0.9)/2, (1-0.9*0.8)/2, 0.9, 0.9*0.8 ], ...
+       'Name','Analysis_temp');
+subplot(2,1,1);
+h1 = plot(1:i, LF_stored(1,1:i), 'b-',  'LineWidth', 1.5); hold on;
+h2 = plot(1:i, RF_stored(1,1:i), 'r-',  'LineWidth', 1.5);
+h3 = plot(1:i, p_ref_stored(1,1:i),  'k--', 'LineWidth', 1.5);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;        
+ax.YTick = 0:0.3:2.4;
+xlim([1 i]);
+ylim([0 2.4]);
+xlabel('Step index');
+ylabel('LF/RF x-t');
+legend([h1,h2,h3],{'LF_x','RF_x','C_ref'},'Location','northwest');
+title('LF/RF x-t');
+
+%-- LF/RF y-t
+subplot(2,1,2);
+h1 = plot(1:i, LF_stored(2,1:i), 'b-',  'LineWidth', 1.5); hold on;
+h2 = plot(1:i, RF_stored(2,1:i), 'r-',  'LineWidth', 1.5);
+h3 = plot(1:i, p_ref_stored(2,1:i),  'k--', 'LineWidth', 1.5);
+grid on;
+ax = gca;         
+ax.XTick = 0:600:i;   
+ax.YTick = -0.33:0.11:0.33;
+xlim([1 i]);
+ylim([-0.3 0.3]);
+xlabel('Step index');
+ylabel('LF/RF y-t');
+legend([h1,h2,h3],{'LF_y','RF_y','C_ref'},'Location','northwest');
+title('LF/RF y-t');
+
+%%
+% figure; plot(LF_stored(1,1:i-1), LF_stored(2,1:i-1)); grid on;
+% xlabel('x [m]'); ylabel('y [m]'); title('Left Foot Trajectory (XY Plane)');
+% xlim([min(LF_stored(1,1:i-1)) max(LF_stored(1,1:i-1))]);
+% ylim([min(LF_stored(2,1:i-1)) max(LF_stored(2,1:i-1))]);
+
+% figure; plot(1:i, LF_stored(1,1:i)); grid on;
+% xlabel('steptime [s]'); ylabel('x [m]'); title('Left Foot Trajectory (X-t Plane)');
+% xlim([1 i]);
+% ylim([min(LF_stored(1,1:i)) max(LF_stored(1,1:i))]);
+
+
 
 %%
 % clc; close all

@@ -1,5 +1,5 @@
 function [theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, rL_ref_horizon, rR_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon, fL_ref_horizon, fR_ref_horizon] = ...
-    mpcRefWindow(t_step, step_phase, Foot_state, L_or_R, LF_prev, RF_prev, COM_ref, dCOM_ref, ddCOM_ref, p_err_sum_x_ref, p_err_sum_y_ref, T_step_ref, p_ref_total, T_step_ref_total, Gi_MPC, Gx_MPC, Gp_MPC)
+    mpcRefWindow(t_step, step_phase, Foot_state, L_or_R, LF_prev, RF_prev, COM_ref, dCOM_ref, ddCOM_ref, p_err_sum_x_ref, p_err_sum_y_ref, T_step_ref, p_ref_total, T_step_ref_total, Gi_MPC, Gx_MPC, Gp_MPC, etak_idx)
     
     theta_ref_horizon = zeros(3, PARA.H);    
     COM_ref_horizon = zeros(3, PARA.H);    
@@ -79,15 +79,20 @@ function [theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, c
             etaR_ref_horizon(j) = 1;
             fL_ref_horizon(3, j) = etaL_ref_horizon(j) * fL_ref_horizon(3, j);
             fR_ref_horizon(3, j) = etaR_ref_horizon(j) * fR_ref_horizon(3, j);
-            contact_ref_horizon(:, j) = RF_prev_temp;
+            contact_ref_horizon(:, j) = p_ref_total(:, step_phase_temp + 1);
         elseif Foot_state_temp == -1 % RF swing
             etaL_ref_horizon(j) = 1;            
             etaR_ref_horizon(j) = 0;
             fL_ref_horizon(3, j) = etaL_ref_horizon(j) * fL_ref_horizon(3, j);
             fR_ref_horizon(3, j) = etaR_ref_horizon(j) * fR_ref_horizon(3, j);
-            contact_ref_horizon(:, j) = LF_prev_temp;
+            contact_ref_horizon(:, j) = p_ref_total(:, step_phase_temp + 1);
         end
-                  
+
+        if j > 1
+            if etaL_ref_horizon(j) ~= etaL_ref_horizon(j-1) || etaR_ref_horizon(j) ~= etaR_ref_horizon(j-1)
+                etak_ref_horizon(j-1) = 1;
+            end
+        end  
         
         [COM_ref_temp_next, dCOM_ref_temp_next, ddCOM_ref_temp_next, p_err_sum_x_ref_temp_next, p_err_sum_y_ref_temp_next] = previewControlMPC(t_step_temp, step_phase_temp, p_ref_total, T_step_ref_total, Gi_MPC, Gx_MPC, Gp_MPC, PARA.A_preview_MPC, PARA.B_preview_MPC, PARA.C_preview_MPC, COM_ref_temp, dCOM_ref_temp, ddCOM_ref_temp, p_err_sum_x_ref_temp, p_err_sum_y_ref_temp);  
         
@@ -103,20 +108,25 @@ function [theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, c
         elseif Foot_state_temp ==  1 % LF swing
             rL_ref_horizon(:, j) = zeros(3,1);
             rR_ref_horizon(:, j) = RF_prev_temp - COM_ref_temp;
+                        if etak_ref_horizon(:, j-1) == 1
+                rL_ref_horizon(:, j-1) = p_ref_total(:, step_phase_temp + 1);
+            end
         elseif Foot_state_temp == -1 % RF swing
             rL_ref_horizon(:, j) = LF_prev_temp - COM_ref_temp;
             rR_ref_horizon(:, j) = zeros(3,1);
         end
-        
+ 
+
         t_step_temp = t_step_temp + PARA.dt_MPC;
         
         COM_ref_temp = COM_ref_temp_next; dCOM_ref_temp = dCOM_ref_temp_next; ddCOM_ref_temp = ddCOM_ref_temp_next;
         p_err_sum_x_ref_temp = p_err_sum_x_ref_temp_next; p_err_sum_y_ref_temp = p_err_sum_y_ref_temp_next;
     end
 
-    for k = 2:PARA.H
-        if etaL_ref_horizon(k-1) ~= etaL_ref_horizon(k) || etaR_ref_horizon(k-1) ~= etaR_ref_horizon(k)
-            etak_ref_horizon(k-1) = 1;
-        end
-    end
+
+    % for k = 2:PARA.H
+    %     if etaL_ref_horizon(k-1) ~= etaL_ref_horizon(k) || etaR_ref_horizon(k-1) ~= etaR_ref_horizon(k)
+    %         etak_ref_horizon(k-1) = 1;
+    %     end
+    % end
 end

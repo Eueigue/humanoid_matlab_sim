@@ -43,7 +43,7 @@ v = [X; U; delcontact];
 
 W_Q = SX.sym('W_Q', H * state_length, 1);
 W_R = SX.sym('W_R', H * input_length, 1);
-W_C = SX.sym('W_C', H * delcontact_length, 1);
+W_C = SX.sym('W_C', 1 * delcontact_length, 1);
 
 J = (X - X_ref)' * diag(W_Q) * (X - X_ref) + (U - U_ref)' * diag(W_R) * (U - U_ref) + (contact + delcontact - contact_ref)' * diag(W_C) * (contact + delcontact - contact_ref);
 
@@ -57,9 +57,8 @@ x0 = SX.sym('x0', state_length, 1);  % CURRENT ROBOT STATE
 x_k = x0;
 for i = 1:H
     
-    u_k           = U((input_length * (i-1) + 1):(input_length * i));
-    delcontact_k  = delcontact((delcontact_length  * (i-1) + 1):(delcontact_length  * i));
-
+    u_k = U((input_length * (i-1) + 1):(input_length * i));
+    
     rL = rL_ref_horizon(:, i);
     rR = rR_ref_horizon(:, i);
     theta = theta_ref_horizon(:, i);
@@ -117,10 +116,10 @@ for i = 1:H
     % x_k_next = Ad * x_k + Bd * u_k + dd;
     % 
     % 4-th Runge-Kutta Method 
-    k1 = A *  x_k + B * u_k + d + Ac * delcontact_k;
-    k2 = A * (x_k + 0.5 * dT * k1) + B * u_k + d + Ac * delcontact_k;
-    k3 = A * (x_k + 0.5 * dT * k2) + B * u_k + d + Ac * delcontact_k;
-    k4 = A * (x_k + dT * k3) + B * u_k + d + Ac * delcontact_k;
+    k1 = A *  x_k + B * u_k + d + Ac * delcontact;
+    k2 = A * (x_k + 0.5 * dT * k1) + B * u_k + d + Ac * delcontact;
+    k3 = A * (x_k + 0.5 * dT * k2) + B * u_k + d + Ac * delcontact;
+    k4 = A * (x_k + dT * k3) + B * u_k + d + Ac * delcontact;
 
     x_k_next = x_k + (dT / 6) * (k1 + 2 * k2 + 2 * k3 + k4);
 
@@ -225,25 +224,20 @@ delcontact_x_min = SX.sym('delcontact_x_min');
 delcontact_y_max = SX.sym('delcontact_y_max');
 delcontact_y_min = SX.sym('delcontact_y_min');
 
-for i = 1:H
-    delcontact_x = delcontact(delcontact_length * (i-1) + 1);
-    delcontact_y = delcontact(delcontact_length * (i-1) + 2);
-    delcontact_z = delcontact(delcontact_length * (i-1) + 3);
+delcontact_x = delcontact(1);
+delcontact_y = delcontact(2);
+delcontact_z = delcontact(3);
 
-    cineq6_max_l_sub = - delcontact_x - delcontact_x_max;
-    cineq6_max_r_sub = delcontact_x - delcontact_x_max;
-    cineq6_min_l_sub = delcontact_x_min + delcontact_x;
-    cineq6_min_r_sub = delcontact_x_min - delcontact_x;
-    cineq6_max = [cineq6_max; cineq6_max_l_sub; cineq6_max_r_sub];
-    cineq6_min = [cineq6_min; cineq6_min_l_sub; cineq6_min_r_sub];
+    cineq6_max_sub = - delcontact_x - delcontact_x_max;
+    cineq6_min_sub = delcontact_x_min + delcontact_x;
+    cineq6_max = [cineq6_max; cineq6_max_sub];
+    cineq6_min = [cineq6_min; cineq6_min_sub];
 
-    cineq7_max_l_sub = - delcontact_y - delcontact_y_max;
-    cineq7_max_r_sub = delcontact_y - delcontact_y_max;
-    cineq7_min_l_sub = delcontact_y_min + delcontact_y;
-    cineq7_min_r_sub = delcontact_y_min - delcontact_y;
-    cineq7_max = [cineq7_max; cineq7_max_l_sub; cineq7_max_r_sub];
-    cineq7_min = [cineq7_min; cineq7_min_l_sub; cineq7_min_r_sub];
-end
+    cineq7_max_sub = - delcontact_y - delcontact_y_max;
+    cineq7_min_sub = delcontact_y_min + delcontact_y;
+    
+    cineq7_max = [cineq7_max; cineq7_max_sub];
+    cineq7_min = [cineq7_min; cineq7_min_sub];
 
 
 ceq1_v = jacobian(ceq1, v);

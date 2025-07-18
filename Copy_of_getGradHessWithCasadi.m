@@ -228,21 +228,16 @@ delcontact_x = delcontact(1);
 delcontact_y = delcontact(2);
 delcontact_z = delcontact(3);
 
-for i = 1:H
-    cineq6_max_l_sub = - delcontact_x - delcontact_x_max;
-    cineq6_max_r_sub = delcontact_x - delcontact_x_max;
-    cineq6_min_l_sub = delcontact_x_min + delcontact_x;
-    cineq6_min_r_sub = delcontact_x_min - delcontact_x;
-    cineq6_max = [cineq6_max; cineq6_max_l_sub; cineq6_max_r_sub];
-    cineq6_min = [cineq6_min; cineq6_min_l_sub; cineq6_min_r_sub];
+cineq6_max_sub = delcontact_x - delcontact_x_max;
+cineq6_min_sub = - delcontact_x + delcontact_x_min;
+cineq6_max = [cineq6_max; cineq6_max_sub];
+cineq6_min = [cineq6_min; cineq6_min_sub];
 
-    cineq7_max_l_sub = - delcontact_y - delcontact_y_max;
-    cineq7_max_r_sub = delcontact_y - delcontact_y_max;
-    cineq7_min_l_sub = delcontact_y_min + delcontact_y;
-    cineq7_min_r_sub = delcontact_y_min - delcontact_y;
-    cineq7_max = [cineq7_max; cineq7_max_l_sub; cineq7_max_r_sub];
-    cineq7_min = [cineq7_min; cineq7_min_l_sub; cineq7_min_r_sub];
-end
+cineq7_max_sub = delcontact_y - delcontact_y_max;
+cineq7_min_sub = - delcontact_y + delcontact_y_min;
+    
+cineq7_max = [cineq7_max; cineq7_max_sub];
+cineq7_min = [cineq7_min; cineq7_min_sub];
 
 
 ceq1_v = jacobian(ceq1, v);
