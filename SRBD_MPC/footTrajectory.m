@@ -1,9 +1,9 @@
-function Foot_next = footTrajectory(t_step, step_phase, number_of_step, L_or_R, T_step, p_ref_total)
+function Foot_next = footTrajectory(t_step, step_phase, number_of_step, L_or_R, T_step, p_total)
 LF_init = [0;  0.5*PARA.pelvis_width; 0];
 RF_init = [0; -0.5*PARA.pelvis_width; 0];
 
-P0 = p_ref_total(:, step_phase-1);
-P3 = p_ref_total(:, step_phase+1);
+P0 = p_total(:, step_phase-1);
+P3 = p_total(:, step_phase+1);
 % if step_phase == number_of_step + 2
 %     P3 = P3 + [0; (L_or_R)*(0.5)*PARA.pelvis_width; 0];
 % elseif step_phase == 2

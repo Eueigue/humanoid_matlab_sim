@@ -23,29 +23,30 @@ step_time = 0.6;                 % Step period
 L_or_R = 1;                      % First swing foot: 1: Left foot / -1: Right foot
 
 % Disturbance information
-Impact_force_x = -500;              % [N]: x-dir impact force
-Impact_force_y = 500;            % [N]: y-dir impact force
-Impact_duration = 0.05;          % [s]: Impact duration
-Impact_timing = 0.3;             % [s]: Timing of impact
-Impact_step_number = 4;         
+F = 0;                                     % [N]:   Magnitude of impact force
+deg = 0;                                   % [deg]: Degree of Impact force (0: to Right / 90: to Back / 180: to Left / 270: to Front)
+Impact_force_x = F * cos(PARA.R2D * deg);  % [N]:   x-dir impact force
+Impact_force_y = F * sin(PARA.R2D * deg);  % [N]:   y-dir impact force
+Impact_duration = 0.05;                    % [s]:   Impact duration
+Impact_timing = 0.3;                       % [s]:   Timing of impact
 
 % Flags
 flag_HORIZON_CHANGED = 1;       % Set to 1 if the number of MPC horizon is changed
 flag_VISUALIZATION = 1;         % Set to 1 for graphic ON
 flag_VISUALIZATION_ROBOT = 1;   % Set to 1 to show robot
-flag_PLOT = 0;                  % Set to 1 to show plots
+% flag_PLOT = 0;                  % Set to 1 to show plots
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %--- Get gradients and hessians with CasADI
-if flag_HORIZON_CHANGED == 0
+if flag_HORIZON_CHANGED == 1
     disp(['Now creating gradients and hessians with CasADI for the MPC horizon: ', num2str(PARA.H), '...']);
     getGradHessWithCasadi();
 end
 %---
 %--- Global variables
-global flag_EXIT flag_PAUSE;
+global flag_EXIT flag_PAUSE flag_FAIL;
 global dx dy;
 dx = 0; dy = 0;
 %---
@@ -68,6 +69,7 @@ iter_error = 0;
 % Flags
 flag_STEP_CHANGE = 0;
 flag_EXIT = 0;
+flag_FAIL = 0;
 flag_PAUSE = 0;
 flag_ERROR = 0;
 % Preview control
@@ -83,6 +85,7 @@ dCOM = [0; 0; 0];
 COM_prev_step = COM;
 dCOM_prev_step = dCOM;
 COM_err = [0; 0; 0];
+theta_err = [0; 0; 0];
 % COM ref.
 COM_ref = [0; 0; PARA.zc];
 dCOM_ref = [0; 0; 0];
@@ -105,8 +108,13 @@ impact_force_stored = zeros(2, i_max);
 T_step_stored = zeros(1, i_max);
 COM_stored = zeros(3, i_max);
 dCOM_stored = zeros(3, i_max);
+COM_next_stored = zeros(3, i_max);
 COM_ref_stored = zeros(3, i_max);
-p_stored = zeros(3, i_max); 
+theta_stored = zeros(3, i_max);
+w_stored = zeros(3, i_max);
+w_ref_stored = zeros(3, i_max);
+p_stored = zeros(3, i_max);
+p_ref_stored = zeros(3, i_max);
 mL_stored = zeros(3, i_max); 
 fL_stored = zeros(3, i_max); 
 mR_stored = zeros(3, i_max); 
@@ -159,6 +167,7 @@ while 1
     if (norm(COM_err) > 0.2 || norm(theta_err) > 0.5)
         disp('Walking fail!!');
         i_final = i;
+        flag_FAIL = 1;
         break;
     elseif (flag_EXIT == 1)
         disp('Walking finish!!');
@@ -222,6 +231,17 @@ while 1
     if Foot_state == 2
         LF = LF_prev;
         RF = RF_prev;
+        if step_phase == number_of_step + 2
+            if L_or_R == 1 && mod(number_of_step, 2) == 0
+                LF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, L_or_R, T_step, p_total);
+            elseif L_or_R == 1 && mod(number_of_step, 2) == 1
+                RF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, L_or_R, T_step, p_total);
+            elseif L_or_R == -1 && mod(number_of_step, 2) == 0
+                RF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, L_or_R, T_step, p_total);
+            elseif L_or_R == -1 && mod(number_of_step, 2) == 1
+                LF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, L_or_R, T_step, p_total);
+            end
+        end
     elseif Foot_state ==  1 % LF swing
         LF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
         RF = RF_prev;
@@ -229,10 +249,10 @@ while 1
         LF = LF_prev;
         RF = footTrajectory(t_step, step_phase, number_of_step, Foot_state, T_step, p_total);
     end
-    if (step_phase == number_of_step + 2)
-        LF = LF_prev;
-        RF = RF_prev;
-    end
+%     if (step_phase == number_of_step + 2)
+%         LF = LF_prev;
+%         RF = RF_prev;
+%     end
     
     % Time ticktock
     ticktock = toc;
@@ -242,9 +262,14 @@ while 1
     t_step_stored(:, i) = t_step;
     T_step_stored(:, i) = T_step;
     COM_stored(:, i) = COM;
+    COM_next_stored(:, i) = COM_next;
     dCOM_stored(:, i) = dCOM;
     COM_ref_stored(:, i) = COM_ref;
-    p_stored(:, i) = p_ref_total(:, step_phase);
+    theta_stored(:,i) = theta;
+    w_stored(:, i) = w;
+    w_ref_stored(:, i) = w_ref_horizon(:, 1);
+    p_stored(:, i) = p_total(:, step_phase);
+    p_ref_stored(:, i) = p_ref_total(:, step_phase);
     mL_stored(:, i) = mL;
     fL_stored(:, i) = fL;
     mR_stored(:, i) = mR;

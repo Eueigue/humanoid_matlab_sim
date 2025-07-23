@@ -23,12 +23,12 @@ step_time = 0.6;                 % Step period
 L_or_R = 1;                      % First swing foot: 1: Left foot / -1: Right foot
 
 % Disturbance information
-F = 500;                                     % [N]:   Magnitude of impact force
-deg = 0;                                     % [deg]: Degree of Impact force (0: to Right / 90: to Back / 180: to Left / 270: to Front)
-Impact_force_x =   F * cos(PARA.R2D * deg);  % [N]:   x-dir impact force
-Impact_force_y = - F * sin(PARA.R2D * deg);  % [N]:   y-dir impact force
-Impact_duration = 0.05;                      % [s]:   Impact duration
-Impact_timing = 0.3;                         % [s]:   Timing of impact
+F = 0;                                     % [N]: Magnitude of impact force
+deg = 0;                                   % [N]: x-dir impact force
+Impact_force_x = F * cos(PARA.R2D * deg);  % [N]: x-dir impact force
+Impact_force_y = F * cos(PARA.R2D * deg);  % [N]: y-dir impact force
+Impact_duration = 0.05;                    % [s]: Impact duration
+Impact_timing = 0.3;                       % [s]: Timing of impact
 Impact_step_number = 4;         
 
 % Flags

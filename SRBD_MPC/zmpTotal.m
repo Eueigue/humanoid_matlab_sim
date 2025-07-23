@@ -16,7 +16,7 @@ for i = 1:number_of_step+10
     elseif i == number_of_step+2
         p_total(:, i) = p_total(:, i-1) + [0.5*L_step; L_or_R*W_step; 0];
     elseif i == number_of_step+3
-        p_total(:, i) = p_total(:, i-1) + [0; L_or_R*0.5*PARA.pelvis_width; 0];
+        p_total(:, i) = p_total(:, i-1) + [0; L_or_R*PARA.pelvis_width; 0];
     elseif i > number_of_step+3
         p_total(:, i) = p_total(:, i-1);
     else
