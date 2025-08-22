@@ -52,8 +52,8 @@ classdef PARA < handle
         T_window = PARA.dt_MPC * PARA.H;
         N_window = PARA.T_window/PARA.dt;
         state_length = 15;       % [theta, COM, w, dCOM, contact]
-        input_length = 12;       % [mL, fL, mR, fR];   
-        delcontact_length = 3;   % [delcontact * L_or_R]
+        input_length = 12;       % [mL, fL, mR, fR]
+        delcontact_length = 3;   % [delcontact]
 
         Q_theta       = 100000000;
         Q_COM_x       = 1000000000;
@@ -63,14 +63,14 @@ classdef PARA < handle
         Q_dCOM        = 10000;
         Q_contact     = 0;
         
-        R_mL = 1;
-        R_fL = 1;
-        R_mR = 1;
-        R_fR = 1;
+        R_mL          = 1;
+        R_fL          = 1;
+        R_mR          = 1;
+        R_fR          = 1;
 
         WC_delcontact = 1000000000;
 
-        f_z_max = 500;
+        f_z_max = 600;
         f_z_min = 0;
         mu = 0.7;   % Coulomb's Friction Coefficient
 

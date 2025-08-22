@@ -13,6 +13,15 @@ elseif step_phase == 3
     elseif Foot_state == -1
         P0 = RF_init;
     end
+elseif step_phase == number_of_step + 2
+    P3 = p_total(:, step_phase) + [0; (L_or_R)*PARA.pelvis_width; 0];
+    if Foot_state == 1
+        % P0 = LF_prev;
+        P0 = p_total(:, step_phase-1);
+    elseif Foot_state == -1
+        % P0 = RF_prev;
+        P0 = p_total(:, step_phase-1);
+    end
 else
     if Foot_state == 1
         % P0 = LF_prev;

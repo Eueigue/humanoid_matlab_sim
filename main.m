@@ -23,13 +23,19 @@ step_time = 0.6;                 % Step period
 L_or_R = 1;                      % First swing foot: 1: Left foot / -1: Right foot
 
 % Disturbance information
-F = 850;                                     % [N]:   Magnitude of impact force
+F = 850;                                       % [N]:   Magnitude of impact force
 deg = 30;                                    % [deg]: Degree of Impact force (0: to Right / 90: to Front / 180: to Left / 270: to Back)
 Impact_force_x =   F * sin(PARA.D2R * deg);  % [N]:   x-dir impact force
 Impact_force_y = - F * cos(PARA.D2R * deg);  % [N]:   y-dir impact force
 Impact_duration = 0.05;                      % [s]:   Impact duration
 Impact_timing = 0.3;                         % [s]:   Timing of impact
-Impact_step_number = 4;         
+Impact_step_number = 6;         
+
+% External load information
+m_obj = 17; % [kg]: Mass of Box
+Ext_timing = 0.3; % [s]: Timing of external load disturbance
+Ext_step_number = 4;
+rE_input = [0.15; 0; 0]; 
 
 % Flags
 flag_HORIZON_CHANGED = 0;       % Set to 1 if the number of MPC horizon is changed
@@ -73,6 +79,7 @@ flag_EXIT = 0;
 flag_PAUSE = 0;
 flag_FAIL = 0;
 flag_ERROR = 0;
+flag_EXT = 0;
 % Preview control
 [Gi, Gx, Gp] = findPreviewGain(PARA.T_preview, PARA.dt, PARA.zc);
 [Gi_MPC, Gx_MPC, Gp_MPC] = findPreviewGain(PARA.T_preview, PARA.dt_MPC, PARA.zc);
@@ -80,6 +87,8 @@ p_err_sum_x = 0; p_err_sum_y = 0;
 p_err_sum_x_ref = 0; p_err_sum_y_ref = 0;
 % ZMP
 p_des = p_total(:, 1);
+% p_total(:, number_of_step + 3) = p_total(:, number_of_step + 2) + [0; 0.5*L_or_R*PARA.pelvis_width; 0];
+% p_ref_total(:, number_of_step + 3) = p_ref_total(:, number_of_step + 2) + [0.5*step_length; 0.5*L_or_R*PARA.pelvis_width; 0];
 % COM
 COM = [0; 0; PARA.zc];
 dCOM = [0; 0; 0];
@@ -91,6 +100,7 @@ theta_err = [0; 0; 0];
 COM_ref = [0; 0; PARA.zc];
 dCOM_ref = [0; 0; 0];
 ddCOM_ref = [0; 0; 0];
+COM_err_x_y_only = [0; 0];
 % Foot
 Foot_state = 2; % DSP
 LF = [0;  0.5*PARA.pelvis_width; 0]; LF_prev = LF;
@@ -101,7 +111,12 @@ color_RF = [0.6 0.6 0.6];
 contact = (L_or_R) .* RF;
 contact_ref = (L_or_R) .* RF;
 
-f_z_mg = PARA.m_all * PARA.g;
+m_all = PARA.m_all;
+m_all_robot_obj = m_all + m_obj;
+f_EXT = [0; 0; -m_obj*PARA.g];
+
+obj_pos = [0;0;0];
+rE = [0;0;0];
 
 % Torso
 theta = [0; 0; 0];
@@ -133,10 +148,13 @@ fR_stored = zeros(3, i_max);
 delcontact_stored = zeros(3, i_max);
 etaL_stored = zeros(1, i_max);
 etaR_stored = zeros(1, i_max);
+etaE_stored = zeros(1, i_max);
 etak_stored = zeros(1, i_max);
 LF_stored = zeros(3, i_max);
 RF_stored = zeros(3, i_max);
+rE_stored = zeros(3, i_max);
 ticktock_stored = zeros(1, i_max);
+obj_pos_stored = zeros(3, i_max);
 
 step1 = 1:600; step2 = 601:1200; step3 = 1201:1800; step4 = 1801:2400; step5 = 2401:3000; 
 step6 = 3001:3600; step7 = 3601:4200; step8 = 4201:4800; step9 = 4801:5400; step10 = 5401:6000;
@@ -146,7 +164,7 @@ step6 = 3001:3600; step7 = 3601:4200; step8 = 4201:4800; step9 = 4801:5400; step
 i_final = 0;
 while 1
     tic;
-
+    fprintf('i = %g\n', i);
     % Step change
     flag_STEP_CHANGE = checkStepEnd(t_step, T_step);
     if flag_STEP_CHANGE == 1
@@ -192,16 +210,26 @@ while 1
             disp('Contact Update Failed!!');
             break;
         end
-
-        contact_ref = p_ref_total(:, step_phase + 1);
         
+        if step_phase == number_of_step + 2
+            contact_ref = p_ref_total(:, step_phase) + [0; L_or_R*step_width; 0];
+        elseif step_phase >= number_of_step + 3
+            contact_ref = p_ref_total(:, step_phase - 1);
+        elseif step_phase == 1
+            % PASS
+        else
+            contact_ref = p_ref_total(:, step_phase + 1);
+        end
+
         % Reset t_step & flag
         t_step = 0;
         flag_STEP_CHANGE = 0; 
     end
+    
+    COM_err_x_y_only = COM_err(1:2, :);
 
     % Exit flag
-    if (norm(COM_err) > 0.2 || norm(theta_err) > 0.5)
+    if (norm(COM_err_x_y_only) > 0.2 || norm(theta_err) > 0.5)
         disp('Walking fail!!');
         i_final = i;
         flag_FAIL = 1;
@@ -224,7 +252,7 @@ while 1
     end
     if flag_ERROR == 1
         disturbance_magnitude = [Impact_force_x; Impact_force_y; 0]; % [N]
-        ddCOM_dist = disturbance_magnitude/PARA.m_all;
+        ddCOM_dist = disturbance_magnitude/m_all;
         dCOM_dist = ddCOM_dist.*PARA.dt;
         COM_dist = dCOM_dist.*PARA.dt + 0.5.*ddCOM_dist.*PARA.dt.*PARA.dt;
         COM = COM + COM_dist;
@@ -234,13 +262,26 @@ while 1
         disturbance_magnitude = [0; 0; 0]; % [N]
         ddCOM_err = [0; 0; 0];
     end
+
+    
+    % External load
+    if (step_phase == Ext_step_number + 1) && ((t_step >= Ext_timing))
+        flag_EXT = 1;
+    end
+    
+    if flag_EXT == 1
+        rE = rE_input;
+        obj_pos = COM + rE;
+    end
     
     % Reference    
     [COM_ref_next, dCOM_ref_next, ddCOM_ref_next, p_err_sum_x_ref_next, p_err_sum_y_ref_next] = previewControl(t_step, step_phase, p_ref_total, T_step_ref_total, Gi, Gx, Gp, PARA.A_preview, PARA.B_preview, PARA.C_preview, COM_ref, dCOM_ref, ddCOM_ref, p_err_sum_x_ref, p_err_sum_y_ref);      
-    [theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, rL_ref_horizon, rR_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon, fL_ref_horizon, fR_ref_horizon] = ...
+    [theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, rL_ref_horizon, rR_ref_horizon, rE_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon, fL_ref_horizon, fR_ref_horizon, etaE_ref_horizon, f_EXT_ref_horizon] = ...
         mpcRefWindow(t_step, step_phase, Foot_state, L_or_R, LF_prev, RF_prev, ...
+                     f_EXT, m_obj, Ext_step_number, Ext_timing, flag_EXT, rE, ...
                      COM_ref, dCOM_ref, ddCOM_ref, ...
-                     p_err_sum_x_ref, p_err_sum_y_ref, T_step_ref, p_ref_total, T_step_ref_total, Gi_MPC, Gx_MPC, Gp_MPC);
+                     p_err_sum_x_ref, p_err_sum_y_ref, T_step_ref, p_total, p_ref_total, step_length, step_width, number_of_step, T_step_ref_total, Gi_MPC, Gx_MPC, Gp_MPC);
+
 
     COM_err = COM - COM_ref;
     theta_err = theta - zeros(3,1);
@@ -253,26 +294,21 @@ while 1
                   theta, COM, w, dCOM, contact, ...
                   contact_ref, ...
                   theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, ...
-                  rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon);
-
+                  rL_ref_horizon, rR_ref_horizon, rE_ref_horizon, fL_ref_horizon, fR_ref_horizon, f_EXT_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etaE_ref_horizon, etak_ref_horizon);
+    
     contact_wrench_result = [mL; fL; mR; fR];
     rL = LF_prev - COM;
     rR = RF_prev - COM;
-    
+
     if step_phase ~= 1
         p_total(:, step_phase + 1) = contact + delcontact;
     end
 
-    % if etak_ref_horizon(1) == 1 && Foot_state == 1
-    %     rR = p_total(:, step_phase + 1) - COM;
-    % elseif etak_ref_horizon(1) == 1 && Foot_state == -1
-    %     rL = p_total(:, step_phase + 1) - COM;
-    % end
 
     % Plant response
     t_span = [0 PARA.dt];
     y0 = [theta; COM; w; dCOM];
-    [t_ode, y_ode] = ode45(@(t_ode, y_ode) odefunc(y_ode, contact_wrench_result, Foot_state, PARA.m_all, PARA.I, PARA.g, rL, rR), t_span, y0);  
+    [t_ode, y_ode] = ode45(@(t_ode, y_ode) odefunc(y_ode, contact_wrench_result, Foot_state, m_all, PARA.I, PARA.g, rL, rR, rE, flag_EXT, f_EXT), t_span, y0);  
     theta_next = [y_ode(end, [1:3])]';
     COM_next   = [y_ode(end, [4:6])]';
     w_next     = [y_ode(end, [7:9])]';
@@ -334,11 +370,14 @@ while 1
     fR_stored(:, i) = fR;
     LF_stored(:, i) = LF;
     RF_stored(:, i) = RF;
+    rE_stored(:, i) = rE;
     delcontact_stored(:, i) = delcontact;
     etaL_stored(1, i) = etaL_ref_horizon(1);
     etaR_stored(1, i) = etaR_ref_horizon(1);
+    etaE_stored(1, i) = etaE_ref_horizon(1);
     etak_stored(1, i) = etak_ref_horizon(1);
     ticktock_stored(:, i) = ticktock;
+    obj_pos_stored(:, i) = obj_pos;
 
     % Time waits for no one
     t = t + PARA.dt;
@@ -389,10 +428,22 @@ if flag_VISUALIZATION == 1
         ax = 0; ay = 89.999;
     end
     view([ax ay]);
-    set(axe, 'XLim', [-0.5 0.5], 'YLim', [-0.5 0.5], 'ZLim', [-0.02 1], 'DataAspectRatio', [1 1 1]);
+    set(axe, 'XLim', [-0.5 0.5], 'YLim', [-0.5 0.5], 'ZLim', [-0.02 1.4], 'DataAspectRatio', [1 1 1]);
     grid on; grid minor;
     xlabel('x [m]'); ylabel('y [m]'); zlabel('z [m]');
+
+    pad = 0.10;  % 여백
+    Xall = []; Yall = [];
+    if exist('LF_stored','var'),     Xall = [Xall, LF_stored(1,:)];     Yall = [Yall, LF_stored(2,:)];     end
+    if exist('RF_stored','var'),     Xall = [Xall, RF_stored(1,:)];     Yall = [Yall, RF_stored(2,:)];     end
+    if exist('COM_stored','var'),    Xall = [Xall, COM_stored(1,:)];    Yall = [Yall, COM_stored(2,:)];    end
+    if exist('p_stored','var'),      Xall = [Xall, p_stored(1,:)];      Yall = [Yall, p_stored(2,:)];      end
+    if exist('obj_pos_stored','var'),Xall = [Xall, obj_pos_stored(1,:)];Yall = [Yall, obj_pos_stored(2,:)]; end
+    Xlim0 = [-0.1 2.95];
+    Ylim0 = [-0.28 0.28];
+    Zlim0 = [-0.02 1.4];
 end
+
 
 i_viz = 1;
 while 1
@@ -407,16 +458,145 @@ while 1
     RF = RF_stored(:,i_viz);
     fL = fL_stored(:, i_viz);
     fR = fR_stored(:, i_viz);
-
-
+    etaE = etaE_stored(i_viz);
+    obj_pos = obj_pos_stored(:,i_viz);
+    
     if flag_VISUALIZATION == 1
         % Camera control
         ax = ax - dx;
         ay = ay - dy;
         dx = 0; dy = 0;
         view([ax, ay]);
-        set(axe,'XLim',[-0.5+COM(1) 0.5+COM(1)],'YLim',[-0.5+COM(2) 0.5+COM(2)],'ZLim',[-0.02 1.0], 'DataAspectRatio', [1 1 1]);
+        set(axe,'XLim',[-0.5+COM(1) 0.5+COM(1)],'YLim',[-0.5+COM(2) 0.5+COM(2)],'ZLim',[-0.02 1.4], 'DataAspectRatio', [1 1 1]);
     end
+    
+    % % === Camera control: XZ view locked to the plane y = -0.11 ===
+    % if flag_VISUALIZATION == 1
+    %     % (이전 키보드 제어 변수 무효화)
+    %     dx = 0; dy = 0;  % 더 이상 각도 갱신 안 씀
+    % 
+    %     y0   = -0.11;    % 보고 싶은 평면 y = y0
+    %     slab = 1;     % 평면 주변 두께(±). 얇게 보고 싶으면 더 줄이기.
+    % 
+    %     % 카메라 타겟: (COM.x, y0, COM.z)로 고정해서 XZ 평면을 따라가게
+    %     cx = COM(1);
+    %     cz = COM(3);
+    %     ct = [cx, y0, cz];
+    % 
+    %     % +Y 방향에서 바라보도록 카메라 배치 (거리 d는 임의)
+    %     d = 2.0;
+    %     camtarget(axe, ct);
+    %     campos(axe, ct + [0 1 0]*d);   % -Y에서 보고 싶으면 [0 -1 0]*d 로
+    %     camup(axe, [0 0 1]);           % Z축이 위로
+    %     camproj(axe, 'orthographic');  % (선택) 원근 제거 → 평면 보기 깔끔
+    %     view(axe, [0 1 0]);            % +Y에서 바라봄 → XZ가 화면에 정면
+    % 
+    %     % 평면 주변만 보이도록 Y 범위를 y0 기준 얇게, X/Z는 COM을 따라가게
+    %     xhalf = 0.5;                   % X 절반 폭 (원래 쓰던 값 유지)
+    %     zmin  = -0.02; zmax = 1.4;     % Z 범위 (원래 쓰던 값 유지)
+    %     set(axe, ...
+    %         'XLim', [cx - xhalf, cx + xhalf], ...
+    %         'YLim', [y0 - slab, y0 + slab], ...
+    %         'ZLim', [zmin, zmax], ...
+    %         'DataAspectRatio', [1 1 1]);
+    % end
+
+
+    
+    % % ====== Camera control: XY Top View (전체 보기) ======
+    % if flag_VISUALIZATION == 1
+    %     dx = 0; dy = 0;
+    % 
+    %     % 위에서 내려다보는 탑뷰 (+Z 방향에서 XY 평면)
+    %     view(axe, 2);                 % == view([0 0 1])
+    %     camup(axe, [0 1 0]);          % 화면 위쪽이 +Y
+    %     camproj(axe, 'orthographic'); % 원근 제거(선택)
+    % 
+    %     % 화면 중앙을 전역 범위의 중심으로
+    %     cx = mean(Xlim0); cy = mean(Ylim0);
+    %     camtarget(axe, [cx, cy, 0]);
+    %     campos(axe,    [cx, cy, 5]);  % 위쪽(Z)에서 내려다봄. 5는 임의 높이
+    % 
+    %     % XY 전역 범위로 고정 (잘림 방지)
+    %     set(axe, 'XLim', Xlim0, ...
+    %              'YLim', Ylim0, ...
+    %              'ZLim', [-0.02 1.4], ...
+    %              'DataAspectRatio', [1 1 1]);
+    % end
+
+    
+
+    % % ====== Camera control: YZ Front View (−X dir, camera at x=4.0) ======
+    % if flag_VISUALIZATION == 1
+    %     dy = 0; dz = 0;                 % Y/Z 팬(필요시 조절)
+    % 
+    %     camproj(axe, 'orthographic');   % 원근 제거
+    %     camup(axe, [0 0 1]);            % 화면 위쪽이 +Z
+    % 
+    %     % 화면 중앙을 Y/Z 범위의 중심으로
+    %     cy = mean(Ylim0);
+    %     Zlim0 = [-0.02 1.4];            % 사용 중인 Z 범위와 맞춤
+    %     cz = mean(Zlim0);
+    % 
+    %     % +X(=3.5)에서 −X 방향으로 YZ 평면을 바라봄
+    %     camtarget(axe, [0,    cy+dy, cz+dz]);   % 보고 있는 지점 (x=0)
+    %     campos(axe,    [4.0,  cy+dy, cz+dz]);   % 카메라 위치 (x=4.0)
+    % 
+    %     % 전역 범위 고정
+    %     set(axe, 'XLim', Xlim0, ...
+    %              'YLim', Ylim0, ...
+    %              'ZLim', Zlim0, ...
+    %              'DataAspectRatio', [1 1 1]);
+    % end
+
+    % % ====== Camera control: XZ Side View (−Y dir, camera at y=4.0) ======
+    % if flag_VISUALIZATION == 1
+    %     dx = 0; dz = 0;                 % X/Z 팬(필요시 조절)
+    % 
+    %     camproj(axe, 'orthographic');   % 원근 제거
+    %     camup(axe, [0 0 1]);            % 화면 위쪽이 +Z
+    % 
+    %     % 화면 중앙을 X/Z 범위의 중심으로
+    %     cx = mean(Xlim0);
+    %     Zlim0 = [-0.02 1.4];            % 사용 중인 Z 범위와 맞춤
+    %     cz = mean(Zlim0);
+    % 
+    %     % y=+4.0에서 −Y 방향으로 XZ 평면을 바라봄
+    %     camtarget(axe, [cx+dx, 0,   cz+dz]);   % 보고 있는 지점 (y=0)
+    %     campos(axe,    [cx+dx, -2.0, cz+dz]);   % 카메라 위치 (y=4.0)
+    % 
+    %     % 전역 범위 고정
+    %     set(axe, 'XLim', Xlim0, ...
+    %              'YLim', Ylim0, ...
+    %              'ZLim', Zlim0, ...
+    %              'DataAspectRatio', [1 1 1]);
+    % end
+    
+    % % ====== Camera control: XY Top View (−Z dir, camera at z=4.0) ======
+    % if flag_VISUALIZATION == 1
+    %     dx = 0; dy = 0;                 % X/Y 팬(필요시 조절)
+    % 
+    %     camproj(axe, 'orthographic');   % 원근 제거
+    %     camup(axe, [0 1 0]);            % 화면 위쪽이 +Y
+    % 
+    %     % 화면 중앙을 X/Y 범위의 중심으로
+    %     cx = mean(Xlim0);
+    %     cy = mean(Ylim0);
+    %     Zlim0 = [-0.02 1.4];            % 사용 중인 Z 범위와 맞춤
+    % 
+    %     % z=+4.0에서 −Z 방향으로 XY 평면을 내려다봄
+    %     camtarget(axe, [cx+dx, cy+dy, 0]);     % 보고 있는 지점 (z=0)
+    %     campos(axe,    [cx+dx, cy+dy, 4.0]);   % 카메라 위치 (z=4.0)
+    % 
+    %     % 전역 범위 고정
+    %     set(axe, 'XLim', Xlim0, ...
+    %              'YLim', Ylim0, ...
+    %              'ZLim', Zlim0, ...
+    %              'DataAspectRatio', [1 1 1]);
+    % end
+
+
+
 
     % Visualization
     if mod(i_viz, 100) == 1  
@@ -424,7 +604,8 @@ while 1
             if flag_VISUALIZATION_ROBOT == 1
                 %--- Inverse kinematics - COM
                 pCOM = COM; 
-                qPEL = mat2quat(rotX_rad(theta(1))*rotY_rad(-theta(2))); rotmPEL = quat2mat(qPEL);
+                % qPEL = mat2quat(rotX_rad(theta(1))*rotY_rad(-theta(2))); rotmPEL = quat2mat(qPEL);
+                qPEL = mat2quat(rotY_rad(theta(2))*rotX_rad(theta(1))); rotmPEL = quat2mat(qPEL);
                 pLF = LF;   %qLF = mat2quat(rotX_rad(theta(1))*rotY_rad(-theta(2))); 
                 qLF = [1 0 0 0];
                 pRF = RF;   %qRF = mat2quat(rotX_rad(theta(1))*rotY_rad(-theta(2))); 
@@ -525,6 +706,7 @@ while 1
                 link4_TORSO_3 = cylinder(axe, [link43_TORSO_x; link43_TORSO_y; link43_TORSO_z]', 0.005, [0, 0, 0], 1, 20);
                 link4_TORSO_4 = cylinder(axe, [link44_TORSO_x; link44_TORSO_y; link44_TORSO_z]', 0.005, [0, 0, 0], 1, 20);
                 %---
+                
             end
 
             % COM
@@ -534,6 +716,60 @@ while 1
             visual_COM_ref = animatedline('Marker', 'o', 'MarkerFaceColor', 'red', 'MarkerEdgeColor', 'black');
             addpoints(visual_COM_ref, COM_ref(1), COM_ref(2), COM_ref(3));
         
+            % EXT
+            if etaE == 1
+                visual_EXT = animatedline('Marker', 'o', 'MarkerFaceColor', 'm', 'MarkerEdgeColor', 'black');
+                addpoints(visual_EXT, obj_pos(1), obj_pos(2), obj_pos(3));                           
+
+                % 1) 절반 길이 계산
+                obj_length = 0.1;
+                obj_width = 0.2;
+                obj_height = 0.15;
+
+                hx = obj_length/2;
+                hy = obj_width/2;
+                hz = obj_height/2;
+                
+                % 2) 로컬 좌표계에서 8개 꼭짓점 정의 (각 row가 [x,y,z])
+                Vloc = [ ...
+                   obj_pos(1)+hx, obj_pos(2)+hy, obj_pos(3)+hz;
+                   obj_pos(1)-hx, obj_pos(2)+hy, obj_pos(3)+hz;
+                   obj_pos(1)-hx, obj_pos(2)-hy, obj_pos(3)+hz;
+                   obj_pos(1)+hx, obj_pos(2)-hy, obj_pos(3)+hz;
+                   obj_pos(1)+hx, obj_pos(2)+hy, obj_pos(3)-hz;
+                   obj_pos(1)-hx, obj_pos(2)+hy, obj_pos(3)-hz;
+                   obj_pos(1)-hx, obj_pos(2)-hy, obj_pos(3)-hz;
+                   obj_pos(1)+hx, obj_pos(2)-hy, obj_pos(3)-hz ];
+                
+                % 3) 월드 좌표로 변환 (T0가 로컬→월드 호모지니어스 변환)
+                Vhom  = [Vloc, ones(8,1)];        % 8×4
+                Vworld = Vloc;
+                
+                % 4) 모서리 인덱스 (12개 엣지)
+                edges = [ ...
+                    1 2; 2 3; 3 4; 4 1;    % top face
+                    5 6; 6 7; 7 8; 8 5;    % bottom face
+                    1 5; 2 6; 3 7; 4 8 ];  % vertical edges
+                
+                % 5) cylinder 호출로 각 엣지 그리기
+                radius = 0.005;                % 원하시는 반지름
+                colour = [0,0,0];              % 색
+                alpha  = 1;                    % 투명도
+                facets = 20;                   % 면 수
+                % edges 만큼 handle 변수(obj)로 저장하기
+                % (이전에 edges, Vworld, radius, colour, alpha, facets가 정의되어 있다고 가정)
+                nEdges = size(edges,1);
+                for j = 1:nEdges
+                    p1 = Vworld(edges(j,1), :);
+                    p2 = Vworld(edges(j,2), :);
+                    % cylinder 그리기
+                    h = cylinder( axe, [p1; p2], radius, colour, alpha, facets );
+                    % obj_i 로 변수 생성
+                    eval( sprintf('obj_%d = h;', j) );
+                end
+
+            end
+
             % LF
             force_draw_scale = 5e-4;
             visual_LF_p1 = LF + [ 0.5*PARA.Foot_length;  0.5*PARA.Foot_width; 0];
@@ -597,6 +833,11 @@ while 1
             delete(visual_LF); delete(visual_RF);
             delete(visual_LF_center); delete(visual_RF_center);
             delete(visual_fL); delete(visual_fR);
+    
+            if etaE == 1
+                delete(visual_EXT); delete(obj_1); delete(obj_2); delete(obj_3); delete(obj_4); delete(obj_5); delete(obj_6); delete(obj_7); delete(obj_8); delete(obj_9); delete(obj_10); delete(obj_11); delete(obj_12);
+            end
+
             if flag_VISUALIZATION_ROBOT == 1
                 delete(link01_LLEG); delete(link23_LLEG); delete(link34_LLEG); delete(link45_LLEG); delete(link6e_LLEG); 
                 delete(link01_RLEG); delete(link23_RLEG); delete(link34_RLEG); delete(link45_RLEG); delete(link6e_RLEG); 
@@ -616,167 +857,237 @@ end
 
 if flag_PLOT == 1
     Impact_t = T_step * Impact_step_number + disturbance_timing;
+    Ext_t    = T_step * Ext_step_number    + Ext_timing;
     tol = 1e-6;                          
-    diffs = abs(t_stored(1:i-1) - Impact_t);
-    [~, Impact_t_idx] = min(diffs);        
+    diffs_Impact = abs(t_stored(1:i-1) - Impact_t);
+    diffs_Ext = abs(t_stored(1:i-1) - Ext_t);
+    [~, Impact_t_idx] = min(diffs_Impact);
+    [~, Ext_t_idx] = min(diffs_Ext);       
+    
+    cols   = 3;
+    margin = 0.02;          
+    gap    = 0.0;           
+    Height = 0.95;          
+    Center = (1 - Height)/2;     
+    Width  = (1 - 2*margin - (cols-1)*gap)/cols;   
+    
+    pos = @(c) [ margin + (c-1)*(Width+gap),  Center,  Width,  Height ];   % [left bottom width height]
 
+    %--- Font, Line Style ---%
+    AXFS   = 18;    % Axis Font Size (Tick)
+    LBFS   = 20;    % Lable Font Size
+    TLFS   = 25;    % Title Font Size
+    LGFS   = 18;    % Legend Font Size
+    LW     = 2.5;   % Line Width
+    LW_REF = 2.5;   % Line Width (Reference, Dot Line)
 
-    fig1 = figure('Units','normalized', ...
-                  'OuterPosition',[ (1-0.9)/2, (1-0.9*0.8)/2, 0.9, 0.9*0.8 ], ...
-                  'Name','Analysis');
-    numCols = 3;
-    tile = tiledlayout(2, numCols); 
-    %tile.TileSpacing = 'compact';
-    %tile.Padding = 'compact';
+    fig1 = figure('Units','normalized','WindowState','normal', ...
+              'OuterPosition', pos(1), 'Name','Delcontact');
+    numRows = 2;
+    numCols = 1;
+    tile = tiledlayout(numRows, numCols); 
+    % tile.TileSpacing = 'compact';
+    % tile.Padding = 'compact';
     getTile = @(row, col) (row - 1) * numCols + col;
 
     %––– Fig 1: delcontact_stored(1,:) & reference
     subplot1 = nexttile(getTile(1, 1));
-    h1 = plot(t_stored(1:i-1), delcontact_stored(1,1:i-1),        'b-',  'LineWidth', 2.5); hold on;
-    h2 = plot(t_stored(1:i-1), (1.0) * step_length * ones(1,i-1), 'r-.', 'LineWidth', 1.5); % 한보폭
-    h3 = plot(t_stored(1:i-1), (0.5) * step_length * ones(1,i-1), 'r-.', 'LineWidth', 1.5); % 반보폭
-    h4 = xline(subplot1, t_stored(Impact_t_idx),                  ':c',  'LineWidth', 2.0);
+    h1 = plot(t_stored(1:i-1), delcontact_stored(1,1:i-1),        'b-',  'LineWidth', LW); hold on;
+    h2 = plot(t_stored(1:i-1), (1.0) * step_length * ones(1,i-1), 'k-.', 'LineWidth', LW_REF); % Stride
+    h3 = plot(t_stored(1:i-1), (0.5) * step_length * ones(1,i-1), 'k-.', 'LineWidth', LW_REF); % Half-Stride
+    h4 = xline(subplot1, t_stored(Ext_t_idx),                     'r-.', 'LineWidth', LW_REF);
+    h5 = xline(subplot1, t_stored(Impact_t_idx),                  ':r',  'LineWidth', LW_REF);
     grid on;
     subplot1.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
-    subplot1.YTick = (-1.0)*step_length : 0.5*step_length : 1.0*step_length;
+    % subplot1.YTick = (-1.0)*step_length : 0.5*step_length : 1.0*step_length;
+    subplot1.YTick = 0:0.15:0.3;
     xlim(subplot1, [t_stored(1), t_stored(i-1)+PARA.dt]);
-    ylim(subplot1, [(1.1)*min(delcontact_stored(1,:)), (1.1)*max(delcontact_stored(1,:))]);
-    xlabel(subplot1, 'time (s)');
-    ylabel(subplot1, '\deltac_x (m)');
-    legend(subplot1, [h1,h2,h3,h4], {'\deltac_x','Stride^{Ref}', 'Half\_Stride^{Ref}', 'IMPACT'}, 'Location','northeastoutside');
-    title(subplot1, '\deltac_x');
+    % ylim(subplot1, [(1.1)*min(delcontact_stored(1,:)), (1.1)*max(delcontact_stored(1,:))]);
+    ylim(subplot1, [0, 0.33]);
+    set(subplot1, 'Fontsize', AXFS);
+    xlabel(subplot1, 'time (s)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    ylabel(subplot1, '\deltac_x (m)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    legend(subplot1, [h1,h2,h3,h4,h5], {'\deltac_x','Stride', 'Half\_Stride', 'Object', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    % legend(subplot1, [h1,h2,h3,h4], {'\deltac_x','Stride', 'Half\_Stride', 'Object'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    title(subplot1, '\deltac_x', 'FontSize', TLFS, 'FontWeight', 'bold');
 
     
     %––– Fig 2: delcontact_stored(2,:) & reference
     subplot2 = nexttile(getTile(2, 1));
-    h1 = plot(t_stored(1:i-1), delcontact_stored(2,1:i-1),                           'b-', 'LineWidth', 2.5); hold on;
-    h2 = plot(t_stored(1:i-1), (1.0)  * step_width * ones(1,i-1), '-.', 'Color', color_LF, 'LineWidth', 1.5);
-    h3 = plot(t_stored(1:i-1), (-1.0) * step_width * ones(1,i-1), '-.', 'Color', color_RF, 'LineWidth', 1.5);
-    h4 = xline(subplot2, t_stored(Impact_t_idx),                                     ':c', 'LineWidth', 2.0);
+    h1 = plot(t_stored(1:i-1), delcontact_stored(2,1:i-1),                           'b-', 'LineWidth', LW); hold on;
+    h2 = plot(t_stored(1:i-1), (1.0)  * step_width * ones(1,i-1), '-.', 'Color', color_LF, 'LineWidth', LW_REF);
+    h3 = plot(t_stored(1:i-1), (-1.0) * step_width * ones(1,i-1), '-.', 'Color', color_RF, 'LineWidth', LW_REF);
+    h4 = xline(subplot2, t_stored(Ext_t_idx),                     'r-.', 'LineWidth', LW_REF);
+    h5 = xline(subplot2, t_stored(Impact_t_idx),                                     ':r', 'LineWidth', LW_REF);
     grid on;       
     subplot2.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
-    subplot2.YTick = (-1.0)*step_width : 0.5*step_width : 1.0*step_width;
+    % subplot2.YTick = (-1.0)*step_width : 0.5*step_width : 1.0*step_width;
+    subplot2.YTick = -0.22:0.11:0.22;
     xlim(subplot2, [t_stored(1), t_stored(i-1)+PARA.dt]);
-    ylim(subplot2, [(1.1)*min(delcontact_stored(2,:)), (1.1)*max(delcontact_stored(2,:))]);
-    xlabel(subplot2, 'time (s)');
-    ylabel(subplot2, '\deltac_y (m)');
-    legend(subplot2, [h1,h2,h3,h4], {'\deltac_y','LF^{Ref}', 'RF^{Ref}', 'IMPACT'}, 'Location','northeastoutside');
-    title(subplot2, '\deltac_y');
+    % ylim(subplot2, [(1.1)*min(delcontact_stored(2,:)), (1.1)*max(delcontact_stored(2,:))]);
+    ylim(subplot2, [-0.28, 0.28]);
+    set(subplot2, 'Fontsize', AXFS);
+    xlabel(subplot2, 'time (s)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    ylabel(subplot2, '\deltac_y (m)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    legend(subplot2, [h1,h2,h3,h4,h5], {'\deltac_y','LF^{Ref}', 'RF^{Ref}', 'Object', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    % legend(subplot2, [h1,h2,h3,h4], {'\deltac_y','LF^{Ref}', 'RF^{Ref}', 'Object'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    title(subplot2, '\deltac_y', 'FontSize', TLFS, 'FontWeight', 'bold');
+
+    % set(findall(fig1, '-property', 'FontSize'), 'FontSize', 17);
+    % set(fig1, 'WindowState', 'maximized');
+
+
+    fig2 = figure('Units','normalized','WindowState','normal', ...
+              'OuterPosition', pos(2), 'Name','COM');
+    numRows = 3;
+    numCols = 1;
+    tile = tiledlayout(numRows, numCols); 
+    % tile.TileSpacing = 'compact';
+    % tile.Padding = 'compact';
+    getTile = @(row, col) (row - 1) * numCols + col;
+
+    %––– Fig 1: (X좌표) 현재접촉위치, 기준접촉위치, 다음접촉위치, 현재COM, 기준COM
+    subplot1 = nexttile(getTile(1, 1)); 
+    h1 = plot(t_stored(1:i-1), p_stored(1,1:i-1),                'b-',  'LineWidth', LW); hold on;
+    h2 = plot(t_stored(1:i-1), p_ref_stored(1,1:i-1),            'k-.', 'LineWidth', LW_REF); 
+    h3 = plot(t_stored(1:i-1), COM_stored(1,1:i-1),              'g-',  'LineWidth', LW);
+    h4 = plot(t_stored(1:i-1), COM_ref_stored(1,1:i-1),          'm-',  'LineWidth', LW);
+    h5 = xline(subplot1, t_stored(Ext_t_idx),                     'r-.', 'LineWidth', LW_REF);
+    h6 = xline(subplot1, t_stored(Impact_t_idx),                 ':r',  'LineWidth', LW_REF);
+    grid on;       
+    subplot1.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
+    % subplot1.YTick = (-1.0)*number_of_step*step_length : 0.5*step_length : 1.0*number_of_step*step_length;
+    % subplot1.YTick = [0, 0.5*step_length, 1.5*step_length:step_length:step_length*(number_of_step-1.5), step_length*(number_of_step-1)];
+    subplot1.YTick = [0:1:2, 2.7];
+    xlim(subplot1, [t_stored(1), t_stored(i-1)+PARA.dt]);
+    % ylim(subplot1, [(1.1)*min(p_stored(1,:)), (1.1)*max(p_stored(1,:))]);
+    ylim(subplot1, [0, 2.8]);
+    set(subplot1, 'Fontsize', AXFS);
+    xlabel(subplot1, 'time (s)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    ylabel(subplot1, 'x (m)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    legend(subplot1, [h1,h2,h3,h4,h5,h6], {'c_x','c^{Ref}_x','COM_x','COM^{Ref}_x', 'Object' 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    % legend(subplot1, [h1,h2,h3,h4,h6], {'c_x','c^{Ref}_x','COM_x','COM^{Ref}_x', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    title(subplot1, 'c_{x} & COM_{x}', 'FontSize', TLFS, 'FontWeight', 'bold');
     
-    %––– Fig 3: (X좌표) 현재접촉위치, 기준접촉위치, 다음접촉위치, 현재COM, 기준COM
-    subplot3 = nexttile(getTile(1, 2)); 
-    h1 = plot(t_stored(1:i-1), p_stored(1,1:i-1),                'b-',  'LineWidth', 2.5); hold on;
-    h2 = plot(t_stored(1:i-1), p_ref_stored(1,1:i-1),            'r-.', 'LineWidth', 1.5); 
-    h3 = plot(t_stored(1:i-1), p_next_foot_step_stored(1,1:i-1), 'k:',  'LineWidth', 1.5);
-    h4 = plot(t_stored(1:i-1), COM_stored(1,1:i-1),              'g-',  'LineWidth', 2.5);
-    h5 = plot(t_stored(1:i-1), COM_ref_stored(1,1:i-1),          'm-',  'LineWidth', 1.5);
-    h6 = xline(subplot3, t_stored(Impact_t_idx),                 ':c',  'LineWidth', 2.0);
+    %––– Fig 2: (Y좌표) 현재접촉위치, 기준접촉위치, 다음접촉위치, 현재COM, 기준COM
+    subplot2 = nexttile(getTile(2, 1)); 
+    h1 = plot(t_stored(1:i-1), p_stored(2,1:i-1),                'b-',  'LineWidth', LW); hold on;
+    h2 = plot(t_stored(1:i-1), p_ref_stored(2,1:i-1),            'k-.', 'LineWidth', LW_REF); 
+    h3 = plot(t_stored(1:i-1), COM_stored(2,1:i-1),              'g-',  'LineWidth', LW);
+    h4 = plot(t_stored(1:i-1), COM_ref_stored(2,1:i-1),          'm-',  'LineWidth', LW_REF);
+    h5 = xline(subplot2, t_stored(Ext_t_idx),                    'r-.', 'LineWidth', LW_REF);
+    h6 = xline(subplot2, t_stored(Impact_t_idx),                 ':r',  'LineWidth', LW_REF);
+    grid on;       
+    subplot2.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
+    % subplot2.YTick = (-1.0)*step_width : 0.5*step_width : 1.0*step_width;
+    subplot2.YTick = -0.22:0.11:0.22;
+    xlim(subplot2, [t_stored(1), t_stored(i-1)+PARA.dt]);
+    % ylim(subplot2, [(1.1)*min(p_stored(2,:)), (1.1)*max(p_stored(2,:))]);
+    ylim(subplot2, [-0.28, 0.28]);
+    set(subplot2, 'Fontsize', AXFS);
+    xlabel(subplot2, 'time (s)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    ylabel(subplot2, 'y (m)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    legend(subplot2, [h1,h2,h3,h4,h5,h6], {'c_y','c^{Ref}_y', 'COM_y','COM^{Ref}_y', 'Object' 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    % legend(subplot2, [h1,h2,h3,h4,h6], {'c_y','c^{Ref}_y', 'COM_y','COM^{Ref}_y', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    title(subplot2, 'c_{y} & COM_{y}', 'FontSize', TLFS, 'FontWeight', 'bold');
+    
+    %-- Fig 3: COM_z
+    subplot3 = nexttile(getTile(3, 1)); 
+    h1 = plot(t_stored(1:i-1), COM_stored(3,1:i-1),              'g-',  'LineWidth', LW); hold on;
+    h2 = plot(t_stored(1:i-1), COM_ref_stored(3,1:i-1),          'm-',  'LineWidth', LW_REF);
+    h3 = xline(subplot3, t_stored(Ext_t_idx),                    'r-.', 'LineWidth', LW_REF);
+    h4 = xline(subplot3, t_stored(Impact_t_idx),                 ':r',  'LineWidth', LW_REF);
     grid on;       
     subplot3.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
-    subplot3.YTick = (-1.0)*number_of_step*step_length : 0.5*step_length : 1.0*number_of_step*step_length;
+    subplot3.YTick = 0.65:0.04:0.81;
     xlim(subplot3, [t_stored(1), t_stored(i-1)+PARA.dt]);
-    ylim(subplot3, [(1.1)*min(p_stored(1,:)), (1.1)*max(p_stored(1,:))]);
-    xlabel(subplot3, 'time (s)');
-    ylabel(subplot3, 'x (m)');
-    legend(subplot3, [h1,h2,h3,h4,h5,h6], {'c_x','c^{Ref}_x','c^{Next}_x','COM_x','COM^{Ref}_x', 'IMPACT'}, 'Location','northeastoutside');
-    title(subplot3, 'Footstep Location X');
+    ylim(subplot3, [0.65, 0.81]);
+    set(subplot3, 'Fontsize', AXFS);
+    xlabel(subplot3, 'time (s)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    ylabel(subplot3, 'z (m)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    legend(subplot3, [h1,h2,h3,h4], {'COM_z','COM^{Ref}_z', 'Object', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    % legend(subplot3, [h1,h2,h4], {'COM_z','COM^{Ref}_z', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    title(subplot3, 'COM_{z}', 'FontSize', TLFS, 'FontWeight', 'bold');
     
-    %––– Fig 4: (Y좌표) 현재접촉위치, 기준접촉위치, 다음접촉위치, 현재COM, 기준COM
-    subplot4 = nexttile(getTile(2, 2)); 
-    h1 = plot(t_stored(1:i-1), p_stored(2,1:i-1),                'b-',  'LineWidth', 2.5); hold on;
-    h2 = plot(t_stored(1:i-1), p_ref_stored(2,1:i-1),            'r-.', 'LineWidth', 1.5); 
-    h3 = plot(t_stored(1:i-1), p_next_foot_step_stored(2,1:i-1), 'k:',  'LineWidth', 1.5);
-    h4 = plot(t_stored(1:i-1), COM_stored(2,1:i-1),              'g-',  'LineWidth', 2.5);
-    h5 = plot(t_stored(1:i-1), COM_ref_stored(2,1:i-1),          'm-',  'LineWidth', 1.5);
-    h6 = xline(subplot4, t_stored(Impact_t_idx),                 ':c',  'LineWidth', 2.0);
+    % set(findall(fig2, '-property', 'FontSize'), 'FontSize', 17);
+    % set(fig2, 'WindowState', 'maximized');
+    
+
+    fig3 = figure('Units','normalized','WindowState','normal', ...
+                  'OuterPosition', pos(3), 'Name','FootStep');
+    numRows = 2;
+    numCols = 1;
+    tile = tiledlayout(numRows, numCols); 
+    % tile.TileSpacing = 'compact';
+    % tile.Padding = 'compact';
+    getTile = @(row, col) (row - 1) * numCols + col;
+
+    %––– Fig 1: LF_x, RF_x
+    subplot1 = nexttile(getTile(1, 1)); 
+    h1 = plot(t_stored(1:i-1), LF_stored(1,1:i-1),    '-',  'Color', color_LF, 'LineWidth', LW); hold on;
+    h2 = plot(t_stored(1:i-1), RF_stored(1,1:i-1),    '-',  'Color', color_RF, 'LineWidth', LW); 
+    h3 = plot(t_stored(1:i-1), p_ref_stored(1,1:i-1), 'k-.'                  , 'LineWidth', LW_REF);
+    h4 = xline(subplot1, t_stored(Ext_t_idx),         'r-.',                   'LineWidth', LW_REF);
+    h5 = xline(subplot1, t_stored(Impact_t_idx),      ':r',                    'LineWidth', LW_REF);
     grid on;       
-    subplot4.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
-    subplot4.YTick = (-1.0)*step_width : 0.5*step_width : 1.0*step_width;
-    xlim(subplot4, [t_stored(1), t_stored(i-1)+PARA.dt]);
-    ylim(subplot4, [(1.1)*min(p_stored(2,:)), (1.1)*max(p_stored(2,:))]);
-    xlabel(subplot4, 'time (s)');
-    ylabel(subplot4, 'y (m)');
-    legend(subplot4, [h1,h2,h3,h4,h5,h6], {'c_y','c^{Ref}_y','c^{Next}_y','COM_y','COM^{Ref}_y', 'IMPACT'}, 'Location','northeastoutside');
-    title(subplot4, 'Footstep Location Y');
+    subplot1.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
+    % subplot1.YTick = [0, 0.5*step_length, 1.5*step_length:step_length:step_length*(number_of_step-1.5), step_length*(number_of_step-1)];
+    subplot1.YTick = [0:1:2, 2.7];
+    xlim(subplot1, [t_stored(1), t_stored(i-1)+PARA.dt]);
+    % ylim(subplot1, [(1.1)*min(p_stored(1,:)), (1.1)*max(p_stored(1,:))]);
+    ylim(subplot1, [0, 2.8]);
+    set(subplot1, 'Fontsize', AXFS);
+    xlabel(subplot1, 'time (s)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    ylabel(subplot1, 'x (m)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    legend(subplot1, [h1,h2,h3,h4,h5], {'LF_x','RF_x','c^{Ref}_x', 'Object', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    % legend(subplot1, [h1,h2,h3,h4], {'LF_x','RF_x','c^{Ref}_x', 'Object'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    title(subplot1, 'LF_x & RF_x', 'FontSize', TLFS, 'FontWeight', 'bold');
     
-    
-    %––– Fig 5: LF_x, RF_x
-    subplot5 = nexttile(getTile(1, 3)); 
-    h1 = plot(t_stored(1:i-1), LF_stored(1,1:i-1),    '-',  'Color', color_LF, 'LineWidth', 2.5); hold on;
-    h2 = plot(t_stored(1:i-1), RF_stored(1,1:i-1),    '-',  'Color', color_RF, 'LineWidth', 2.5); 
-    h3 = plot(t_stored(1:i-1), p_ref_stored(1,1:i-1), 'r-.'                  , 'LineWidth', 1.5);
-    h4 = xline(subplot5, t_stored(Impact_t_idx),      ':c',                    'LineWidth', 2.0);
+    %––– Fig 2: LF_y, RF_y
+    subplot2 = nexttile(getTile(2, 1)); 
+    h1 = plot(t_stored(1:i-1), LF_stored(2,1:i-1),    '-',  'Color', color_LF, 'LineWidth', LW); hold on;
+    h2 = plot(t_stored(1:i-1), RF_stored(2,1:i-1),    '-',  'Color', color_RF, 'LineWidth', LW); 
+    h3 = plot(t_stored(1:i-1), p_ref_stored(2,1:i-1), 'k-.'                  , 'LineWidth', LW_REF);
+    h4 = xline(subplot2, t_stored(Ext_t_idx),         'r-.',                   'LineWidth', LW_REF);
+    h5 = xline(subplot2, t_stored(Impact_t_idx),      ':r',                    'LineWidth', LW_REF);
     grid on;       
-    subplot5.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
-    subplot5.YTick = (-1.0)*number_of_step*step_length : 0.5*step_length : 1.0*number_of_step*step_length;
-    xlim(subplot5, [t_stored(1), t_stored(i-1)+PARA.dt]);
-    ylim(subplot5, [(1.1)*min(p_stored(1,:)), (1.1)*max(p_stored(1,:))]);
-    xlabel(subplot5, 'time (s)');
-    ylabel(subplot5, 'x (m)');
-    legend(subplot5, [h1,h2,h3,h4], {'LF_x','RF_x','c^{Ref}_x', 'IMPACT'}, 'Location','northeastoutside');
-    title(subplot5, 'LF_x & RF_x');
+    subplot2.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
+    % subplot2.YTick = (-1.0)*step_width : 0.5*step_width : 1.0*step_width;
+    subplot2.YTick = -0.22:0.11:0.22;
+    xlim(subplot2, [t_stored(1), t_stored(i-1)+PARA.dt]);
+    % ylim(subplot2, [(1.1)*min(p_stored(2,:)), (1.1)*max(p_stored(2,:))]);
+    ylim(subplot2, [-0.28, 0.28]);
+    set(subplot2, 'Fontsize', AXFS);
+    xlabel(subplot2, 'time (s)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    ylabel(subplot2, 'y (m)', 'FontSize', LBFS, 'FontWeight', 'bold');
+    legend(subplot2, [h1,h2,h3,h4,h5], {'LF_y','RF_y','c^{Ref}_y', 'Object', 'IMPACT'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    % legend(subplot2, [h1,h2,h3,h4], {'LF_y','RF_y','c^{Ref}_y', 'Object'}, 'Location','northeastoutside', 'FontSize', LGFS);
+    title(subplot2, 'LF_y & RF_y', 'FontSize', TLFS, 'FontWeight', 'bold');
     
-    %––– Fig 6: LF_y, RF_y
-    subplot6 = nexttile(getTile(2, 3)); 
-    h1 = plot(t_stored(1:i-1), LF_stored(2,1:i-1),    '-',  'Color', color_LF, 'LineWidth', 2.5); hold on;
-    h2 = plot(t_stored(1:i-1), RF_stored(2,1:i-1),    '-',  'Color', color_RF, 'LineWidth', 2.5); 
-    h3 = plot(t_stored(1:i-1), p_ref_stored(2,1:i-1), 'r-.'                  , 'LineWidth', 1.5);
-    h4 = xline(subplot6, t_stored(Impact_t_idx),      ':r',                    'LineWidth', 2.0);
-    grid on;       
-    subplot6.XTick = t_stored(1):T_step:t_stored(i-1)+PARA.dt;
-    subplot6.YTick = (-1.0)*step_width : 0.5*step_width : 1.0*step_width;
-    xlim(subplot6, [t_stored(1), t_stored(i-1)+PARA.dt]);
-    ylim(subplot6, [(1.1)*min(p_stored(2,:)), (1.1)*max(p_stored(2,:))]);
-    xlabel(subplot6, 'time (s)');
-    ylabel(subplot6, 'y (m)');
-    legend(subplot6, [h1,h2,h3,h4], {'LF_y','RF_y','c^{Ref}_y', 'IMPACT'}, 'Location','northeastoutside');
-    title(subplot6, 'LF_y & RF_y');
-    
-    
-    
-    %%
-    fig2 = figure('Units','normalized', ...
-                  'OuterPosition',[ (1-0.9)/2, (1-0.9*0.8)/2, 0.9, 0.9*0.8 ], ...
-                  'Name','w_Analysis');
-    
-    %––– Fig 1: wx
-    subplot(1,3,1);
-    plot(1:i, w_stored(1,1:i),       'b-',  'LineWidth', 2.5); hold on;
-    plot(1:i, w_ref_stored(1,1:i),   'r--', 'LineWidth', 1.5);
-    grid on;
-    ax = gca;         
-    ax.XTick = 0:600:i;
-    xlim([1 i]);
-    xlabel('Step index');
-    ylabel('w_x');
-    legend('w_x','w\_Ref_x');
-    title('w_x VS w\_Ref_x');
-    
-    
-    %––– Fig 2: wy
-    subplot(1,3,2);
-    plot(1:i, w_stored(2,1:i),       'b-',  'LineWidth', 2.5); hold on;
-    plot(1:i, w_ref_stored(2,1:i),   'r--', 'LineWidth', 1.5);
-    grid on;
-    ax = gca;         
-    ax.XTick = 0:600:i;
-    xlim([1 i]);
-    xlabel('Step index');
-    ylabel('w_y');
-    legend('w_y','w\_Ref_y');
-    title('w_y VS w\_Ref_y');
-    
-    %––– Fig 3: wz
-    subplot(1,3,3);
-    plot(1:i, w_stored(3,1:i),       'b-',  'LineWidth', 2.5); hold on;
-    plot(1:i, w_ref_stored(3,1:i),   'r--', 'LineWidth', 1.5);
-    grid on;
-    ax = gca;         
-    ax.XTick = 0:600:i;
-    xlim([1 i]);
-    xlabel('Step index');
-    ylabel('w_z');
-    legend('w_z','w\_Ref_z');
-    title('w_z VS w\_Ref_z');
+    % set(findall(fig3, '-property', 'FontSize'), 'FontSize', 17);
+    % set(fig3, 'WindowState', 'maximized');
 
 end
+
+
+% %%
+% %--- Save Workspace for Plot
+% Impact_t = T_step * Impact_step_number + disturbance_timing;
+% Ext_t    = T_step * Ext_step_number    + Ext_timing;
+% tol = 1e-6;                          
+% diffs_Impact = abs(t_stored(1:i-1) - Impact_t);
+% diffs_Ext = abs(t_stored(1:i-1) - Ext_t);
+% [~, Impact_t_idx] = min(diffs_Impact);
+% [~, Ext_t_idx] = min(diffs_Ext);
+% 
+% filename = 'extModel';
+% fmtFDeg = sprintf('_F_%03.0f_deg_%03.0f_m_%03.0f_%d', F, deg, floor(m_obj), round(mod(m_obj,1)*10));
+% matName = [filename fmtFDeg '.mat'];
+% varsToSave = {'t_stored', 'T_step', ...
+%               'step_length', 'step_width', 'Ext_t_idx', 'number_of_step',...
+%               'p_stored', 'p_ref_stored', 'COM_stored', 'COM_ref_stored', ...
+%               'theta_stored', 'delcontact_stored', 'i', 'm_obj', ...
+%               'LF_stored', 'RF_stored', ...
+%               'fL_stored', 'fR_stored', 'mL_stored', 'mR_stored'};
+% 
+% save(fullfile(pwd, matName), varsToSave{:});

@@ -13,21 +13,24 @@ g = SX.sym('g');
 h = SX.sym('h');
 I = SX.sym('I', 3, 3);
 I_inv = inv(I);
+f_EXT = SX.sym('f_EXT', 1, 3);
 
 mu = SX.sym('mu');  % FRICTION COEFFICIENT
 dT = SX.sym('dT');  % MPC TIMESTEP
 
 rL_ref_horizon = SX.sym('rL_ref_horizon', 3, H);
 rR_ref_horizon = SX.sym('rR_ref_horizon', 3, H);
+rE_ref_horizon = SX.sym('rE_ref_horizon', 3, H);
 
 fL_ref_horizon = SX.sym('fL_ref_horizon', 3, H);
 fR_ref_horizon = SX.sym('fR_ref_horizon', 3, H);
+f_EXT_ref_horizon = SX.sym('f_EXT_ref_horizon', 3, H);
 
 theta_ref_horizon = SX.sym('theta_ref_horizon', 3, H);
 
 etaL_ref_horizon = SX.sym('etaL_ref_horizon', H);
 etaR_ref_horizon = SX.sym('etaR_ref_horizon', H);
-
+etaE_ref_horizon = SX.sym('etaE_ref_horizon', H);
 etak_ref_horizon = SX.sym('etak_ref_horizon', H);
 
 % STATE AND CONTROL INPUTS
@@ -61,12 +64,15 @@ for i = 1:H
     
     rL = rL_ref_horizon(:, i);
     rR = rR_ref_horizon(:, i);
+    rE = rE_ref_horizon(:, i);
     theta = theta_ref_horizon(:, i);
     fL = fL_ref_horizon(:, i);
     fR = fR_ref_horizon(:, i);
+    f_EXT = f_EXT_ref_horizon(:, i);
 
     etaL = etaL_ref_horizon(i);
     etaR = etaR_ref_horizon(i);
+    etaE = etaE_ref_horizon(i);
     etak = etak_ref_horizon(i);
 
     T = SX.zeros(3, 3);
@@ -88,24 +94,24 @@ for i = 1:H
     d  = SX.zeros(state_length, 1);
     
 
-    A(1:3, 7:9)   = T_inv;
-    A(4:6, 10:12) = SX.eye(3);
+    A(1:3, 7:9)     = T_inv;
+    A(4:6, 10:12)   = SX.eye(3);
 
-    A(7:9, 4:6)   =   I_inv * skew(fL + fR);
-    A(7:9, 13:15) = - I_inv * skew(fL + fR);
+    A(7:9, 4:6)     =   I_inv * skew(fL + fR);
+    A(7:9, 13:15)   = - I_inv * skew(fL + fR);
 
-    B(7:9, 1:3)   = etaL * I_inv;
-    B(7:9, 4:6)   = etaL * I_inv * skew(rL);
-    B(7:9, 7:9)   = etaR * I_inv;
-    B(7:9, 10:12) = etaR * I_inv * skew(rR);
+    B(7:9, 1:3)     = etaL * I_inv;
+    B(7:9, 4:6)     = etaL * I_inv * skew(rL);
+    B(7:9, 7:9)     = etaR * I_inv;
+    B(7:9, 10:12)   = etaR * I_inv * skew(rR);
 
     B(10:12, 4:6)   = etaL * SX.eye(3) / m;
     B(10:12, 10:12) = etaR * SX.eye(3) / m;
 
-    Ac(7:9, 1:3) = - etak * I_inv * skew(fL + fR);
-
-    d(12) = -g;
-
+    Ac(7:9, 1:3)    = - etak * I_inv * skew(fL + fR);
+    
+    d(7:9)   = etaE * I_inv * skew(rE) * f_EXT;
+    d(10:12) = etaE * SX.eye(3) / m + [0;0;-g];
 
     % DISCRETE SYSTEM
     % Explicit Euler
@@ -145,9 +151,13 @@ fR_x = U(input_length * (H-1) + 10);
 fR_y = U(input_length * (H-1) + 11);
 fR_z = U(input_length * (H-1) + 12);
 
-ceq2_x_sub = dCOM_x + b * (fL_x / m + fR_x / m);
-ceq2_y_sub = dCOM_y + b * (fL_y / m + fR_y / m);
-ceq2_z_sub = dCOM_z + b * (fL_z / m + fR_z / m- g);
+f_EXT_x = etaE_ref_horizon(H-1) * f_EXT_ref_horizon(1);
+f_EXT_y = etaE_ref_horizon(H-1) * f_EXT(2);
+f_EXT_z = etaE_ref_horizon(H-1) * f_EXT(3);
+
+ceq2_x_sub = dCOM_x + b * (fL_x / m + fR_x / m + f_EXT_x / m);
+ceq2_y_sub = dCOM_y + b * (fL_y / m + fR_y / m + f_EXT_y / m);
+ceq2_z_sub = dCOM_z + b * (fL_z / m + fR_z / m + f_EXT_z / m - g);
 
 ceq2 = [ceq2; ceq2_x_sub; ceq2_y_sub; ceq2_z_sub];
 
@@ -228,16 +238,16 @@ delcontact_x = delcontact(1);
 delcontact_y = delcontact(2);
 delcontact_z = delcontact(3);
 
-    cineq6_max_sub = - delcontact_x - delcontact_x_max;
-    cineq6_min_sub = delcontact_x_min + delcontact_x;
-    cineq6_max = [cineq6_max; cineq6_max_sub];
-    cineq6_min = [cineq6_min; cineq6_min_sub];
+cineq6_max_sub = delcontact_x - delcontact_x_max;
+cineq6_min_sub = - delcontact_x + delcontact_x_min;
+cineq6_max = [cineq6_max; cineq6_max_sub];
+cineq6_min = [cineq6_min; cineq6_min_sub];
 
-    cineq7_max_sub = - delcontact_y - delcontact_y_max;
-    cineq7_min_sub = delcontact_y_min + delcontact_y;
+cineq7_max_sub = delcontact_y - delcontact_y_max;
+cineq7_min_sub = - delcontact_y + delcontact_y_min;
     
-    cineq7_max = [cineq7_max; cineq7_max_sub];
-    cineq7_min = [cineq7_min; cineq7_min_sub];
+cineq7_max = [cineq7_max; cineq7_max_sub];
+cineq7_min = [cineq7_min; cineq7_min_sub];
 
 
 ceq1_v = jacobian(ceq1, v);
@@ -271,11 +281,11 @@ cd(output_dir);
 J_v_func = Function('J_v_func',   {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_v});
 J_vv_func = Function('J_vv_func', {X, U, contact, X_ref, U_ref, contact_ref, delcontact, W_Q, W_R, W_C}, {J_vv});
  
-ceq1_func = Function('ceq1_func', {x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon}, {ceq1});
-ceq1_v_func = Function('ceq1_v_func', {x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon}, {ceq1_v});
+ceq1_func = Function('ceq1_func', {x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, rE_ref_horizon, fL_ref_horizon, fR_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etaE_ref_horizon, etak_ref_horizon}, {ceq1});
+ceq1_v_func = Function('ceq1_v_func', {x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, rE_ref_horizon, fL_ref_horizon, fR_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etaE_ref_horizon, etak_ref_horizon}, {ceq1_v});
 
-ceq2_func = Function('ceq2_func', {X, U, m, g, h}, {ceq2});
-ceq2_v_func = Function('ceq2_v_func', {X, U, m, g, h}, {ceq2_v});
+ceq2_func = Function('ceq2_func', {X, U, m, g, h, f_EXT, etaE_ref_horizon}, {ceq2});
+ceq2_v_func = Function('ceq2_v_func', {X, U, m, g, h, f_EXT, etaE_ref_horizon}, {ceq2_v});
 
 cineq1_max_func = Function('cineq1_max_func', {U, f_z_max}, {cineq1_max});
 cineq1_min_func = Function('cineq1_min_func', {U, f_z_min}, {cineq1_min});

@@ -1,6 +1,6 @@
 function [P, c, A, b, G, h] = qpswiftParameters(x0, theta_ref_horizon, COM_ref_horizon, w_ref_horizon, dCOM_ref_horizon, contact_ref_horizon, ...
                                                 contact, contact_ref, ...
-                                                rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon)
+                                                rL_ref_horizon, rR_ref_horizon, rE_ref_horizon, fL_ref_horizon, fR_ref_horizon, f_EXT_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etaE_ref_horizon, etak_ref_horizon)
 
 H = PARA.H;
 state_length = PARA.state_length;
@@ -17,6 +17,7 @@ dT = PARA.dt_MPC;
 gain_state_horizon = zeros(H*state_length, 1);
 gain_input_horizon = zeros(H*input_length, 1);
 gain_delcontact_horizon  = zeros(1*delcontact_length, 1);
+gain_delcontact_horizon(1:delcontact_length, 1) = PARA.WC_delcontact;
 
 for i = 1:H
     gain_state_horizon((i-1)*state_length + 1 : (i-1)*state_length + 3,  1) = PARA.Q_theta;
@@ -32,7 +33,6 @@ for i = 1:H
     gain_input_horizon((i-1)*input_length + 7 : (i-1)*input_length + 9,  1) = PARA.R_mR;
     gain_input_horizon((i-1)*input_length + 10: (i-1)*input_length + 12, 1) = PARA.R_fR;
 
-    gain_delcontact_horizon(1:3, 1) = PARA.WC_delcontact;
 end
 
 % MPC Reference
@@ -55,11 +55,11 @@ end
 c = J_v_func(X, U, contact, X_ref, U_ref, contact_ref, delcontact, gain_state_horizon, gain_input_horizon, gain_delcontact_horizon);
 P = J_vv_func(X, U, contact, X_ref, U_ref, contact_ref, delcontact, gain_state_horizon, gain_input_horizon, gain_delcontact_horizon);
 
-ceq1   = ceq1_func(x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon);
-ceq1_v = ceq1_v_func(x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, fL_ref_horizon, fR_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etak_ref_horizon);
+ceq1   = ceq1_func(x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, rE_ref_horizon, fL_ref_horizon, fR_ref_horizon, f_EXT_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etaE_ref_horizon, etak_ref_horizon);
+ceq1_v = ceq1_v_func(x0, X, U, delcontact, m, g, I, dT, rL_ref_horizon, rR_ref_horizon, rE_ref_horizon, fL_ref_horizon, fR_ref_horizon, f_EXT_ref_horizon, theta_ref_horizon, etaL_ref_horizon, etaR_ref_horizon, etaE_ref_horizon, etak_ref_horizon);
 
-ceq2   = ceq2_func(X, U, m, g, zc);
-ceq2_v = ceq2_v_func(X, U, m, g, zc);
+% ceq2   = ceq2_func(X, U, m, g, zc, f_EXT_ref_horizon, etaE_ref_horizon);
+% ceq2_v = ceq2_v_func(X, U, m, g, zc, f_EXT_ref_horizon, etaE_ref_horizon);
 
 cineq1_max = cineq1_max_func(U, PARA.f_z_max);
 cineq1_min = cineq1_min_func(U, PARA.f_z_min);
@@ -95,10 +95,10 @@ cineq7_min_v = cineq7_min_v_func(delcontact, PARA.delcontact_y_min);
 % A = [ceq1_v];
 % b = (-1).*[ceq1];
 % 
-A = [ceq1_v;
-     ceq2_v];
-b = (-1).*[ceq1;
-           ceq2];
+A = [ceq1_v
+     ];
+b = (-1).*[ceq1
+           ];
 
 G = [cineq1_max_v;
      cineq1_min_v;
